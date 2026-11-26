@@ -34,6 +34,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/stockpilot
       JWT_SECRET: ${JWT_SECRET:-local-docker-secret-change-me-0123456789abcdef}
       CORS_ORIGINS: '["http://localhost:8080","http://localhost:5173"]'
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}  # optional: enables Ask StockPilot
     ports:
       - "8000:8000"
     depends_on:

@@ -18,6 +18,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import PageParams
+from app.core.events import queue_event
 from app.core.exceptions import InsufficientStock
 from app.models import (
     Location,
@@ -110,7 +111,20 @@ async def apply_movements(
         raise InsufficientStock("Not enough stock to complete this operation", details=shortages)
 
     for key, delta in net.items():
-        levels[key].on_hand += delta
+        level = levels[key]
+        level.on_hand += delta
+        queue_event(
+            db,
+            org_id,
+            {
+                "type": "stock.changed",
+                "variant_id": str(key[0]),
+                "location_id": str(key[1]),
+                "on_hand": level.on_hand,
+                "available": level.on_hand - level.reserved,
+                "delta": delta,
+            },
+        )
     db.add_all(
         StockMovement(
             org_id=org_id,

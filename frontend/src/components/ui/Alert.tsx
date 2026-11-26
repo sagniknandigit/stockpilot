@@ -5,8 +5,8 @@ import { cn } from '@/lib/utils'
 type Tone = 'error' | 'success' | 'info'
 
 const styles: Record<Tone, string> = {
-  error: 'border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-400',
-  success: 'border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400',
+  error: 'border-danger/30 bg-danger/5 text-danger-ink',
+  success: 'border-success/30 bg-success/5 text-success-ink',
   info: 'border-accent/30 bg-accent-soft text-foreground',
 }
 const icons = { error: CircleAlert, success: CircleCheck, info: Info }
@@ -25,7 +25,7 @@ export function Alert({
     <div
       role={tone === 'error' ? 'alert' : 'status'}
       className={cn(
-        'flex items-start gap-2 rounded-lg border px-3 py-2.5 text-[13px]',
+        'flex items-start gap-2 rounded-xl border px-3 py-2.5 text-[13px]',
         styles[tone],
         className,
       )}

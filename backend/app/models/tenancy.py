@@ -39,6 +39,7 @@ class Organization(UUIDPrimaryKey, Timestamped, Base):
     # Per-tenant order counter. Incremented under a row lock inside the checkout
     # transaction, so numbers are gapless and never reveal other tenants' volume.
     order_seq: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
+    po_seq: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
 
 
 class User(UUIDPrimaryKey, Timestamped, TenantScoped, Base):

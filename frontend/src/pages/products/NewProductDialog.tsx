@@ -133,7 +133,7 @@ function NewProductForm({ onDone }: { onDone: () => void }) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="-my-1 text-red-600 dark:text-red-400"
+                      className="-my-1 text-danger-ink"
                       onClick={() => variants.remove(index)}
                       aria-label={`Remove variant ${index + 1}`}
                     >

@@ -3,6 +3,7 @@ import os
 # Configure before any app import: tests run against a dedicated database.
 os.environ["ENVIRONMENT"] = "test"
 os.environ["BCRYPT_ROUNDS"] = "4"
+os.environ["ANTHROPIC_API_KEY"] = ""  # never call the real API from tests
 os.environ["DATABASE_URL"] = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/stockpilot_test"
 )

@@ -1,30 +1,34 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Camera, MapPin, ScanBarcode, WifiOff } from 'lucide-react'
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Link } from 'react-router'
 import { catalogApi } from '@/api/catalog'
 import type { Location, Order, StockShortage, VariantSearchResult } from '@/api/types'
 import { useCan, useSession } from '@/auth/AuthContext'
 import { Alert } from '@/components/ui/Alert'
+import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Field } from '@/components/ui/Field'
 import { Input } from '@/components/ui/Input'
+import { Kbd } from '@/components/ui/Kbd'
 import { PageLoader } from '@/components/ui/PageLoader'
 import { toast } from '@/components/ui/toast'
 import { queryKeys } from '@/hooks/queryKeys'
+import { useCategories, useProducts } from '@/hooks/useCatalog'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useCreateOrder } from '@/hooks/useSales'
 import { getErrorMessage, isApiError } from '@/lib/errors'
-import { formatMoney, formatOrderNumber } from '@/lib/format'
+import { formatMoney, formatOrderNumber, pluralize } from '@/lib/format'
 import { fromCents, isValidAmount, toCents } from '@/lib/money'
-import { createIdempotencyKey } from '@/lib/utils'
+import { cn, createIdempotencyKey } from '@/lib/utils'
 import { useCurrentLocation } from '@/providers/LocationContext'
 import { CameraScanDialog } from './CameraScanDialog'
 import { CartPanel } from './CartPanel'
 import { ReceiptDialog } from './ReceiptDialog'
-import { SearchResults } from './SearchResults'
+import { ProductGrid } from './ProductGrid'
 import { useCart } from './useCart'
 
 export function PosPage() {
@@ -67,6 +71,7 @@ function PosTerminal({ location }: { location: Location }) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const [query, setQuery] = useState('')
+  const [categoryId, setCategoryId] = useState('')
   const [scanning, setScanning] = useState(false)
   const [receipt, setReceipt] = useState<Order | null>(null)
   const [discount, setDiscount] = useState('')
@@ -86,6 +91,16 @@ function PosTerminal({ location }: { location: Location }) {
     queryFn: ({ signal }) => catalogApi.searchVariants(location.id, term, signal),
     placeholderData: keepPreviousData,
   })
+  const categories = useCategories()
+  // The POS search has no category filter, so chips filter the tiles by the category's
+  // product ids (one catalog page covers a small shop; the search box covers the rest).
+  const categoryProducts = useProducts({ category_id: categoryId, size: 100 }, Boolean(categoryId))
+  const categoryProductIds = categoryId
+    ? new Set(categoryProducts.data?.items.map((p) => p.id))
+    : null
+  const tiles = categoryProductIds
+    ? search.data?.filter((item) => categoryProductIds.has(item.product_id))
+    : search.data
 
   /** Every edit to the sale invalidates the pending idempotency key and stale errors. */
   function onSaleChanged() {
@@ -112,7 +127,7 @@ function PosTerminal({ location }: { location: Location }) {
       toast.error(`${item.product_name} is out of stock at ${location.code}`)
     else if (result === 'at_limit')
       toast.error(`Only ${item.available} × ${item.sku} available at ${location.code}`)
-    inputRef.current?.focus()
+    if (window.matchMedia('(pointer: fine)').matches) inputRef.current?.focus()
   }
 
   /**
@@ -164,6 +179,7 @@ function PosTerminal({ location }: { location: Location }) {
         ? 'Discount can’t exceed the subtotal'
         : undefined
   const totalCents = cart.subtotalCents - discountCents
+  const formatTotal = useCallback((value: number) => formatMoney(value, currency), [currency])
 
   function checkout() {
     const key = idempotencyKey ?? createIdempotencyKey()
@@ -209,24 +225,63 @@ function PosTerminal({ location }: { location: Location }) {
   const pending = createOrder.isPending
   const quantityInCart = (variantId: string) =>
     cart.lines.find((line) => line.variantId === variantId)?.quantity ?? 0
+  const canCheckout = cart.lines.length > 0 && !cart.hasProblems && !discountError && !pending
+  const totalLabel = formatMoney(fromCents(Math.max(totalCents, 0)), currency)
+
+  // Till shortcuts: F2 focuses the scan box, F9 or Ctrl/⌘+Enter charges the sale.
+  const checkoutRef = useRef<(() => void) | null>(null)
+  useEffect(() => {
+    checkoutRef.current = canCheckout ? checkout : null
+  })
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (document.querySelector('dialog[open]')) return
+      if (event.key === 'F2') {
+        event.preventDefault()
+        inputRef.current?.focus()
+        inputRef.current?.select()
+      } else if (
+        event.key === 'F9' ||
+        ((event.ctrlKey || event.metaKey) && event.key === 'Enter')
+      ) {
+        event.preventDefault()
+        checkoutRef.current?.()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
       <section aria-label="Find products" className="min-w-0">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-xl font-semibold tracking-tight text-foreground">Point of sale</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Point of sale</h1>
             <p className="mt-1 text-[13px] text-muted">
-              Selling from <span className="font-medium text-foreground">{location.name}</span>.
-              Scan a barcode or search, then press Enter.
+              Selling from <span className="font-medium text-foreground">{location.name}</span>
             </p>
           </div>
+          <ul
+            className="hidden items-center gap-3 text-xs text-muted md:flex"
+            aria-label="Keyboard shortcuts"
+          >
+            <li className="flex items-center gap-1.5">
+              <Kbd>F2</Kbd> Search
+            </li>
+            <li className="flex items-center gap-1.5">
+              <Kbd>Esc</Kbd> Clear
+            </li>
+            <li className="flex items-center gap-1.5">
+              <Kbd>F9</Kbd> Charge
+            </li>
+          </ul>
         </div>
 
-        <div className="mb-4 flex gap-2">
+        <div className="mb-3 flex gap-2">
           <div className="relative flex-1">
             <ScanBarcode
-              className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-muted"
+              className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-accent"
               aria-hidden="true"
             />
             <Input
@@ -235,41 +290,71 @@ function PosTerminal({ location }: { location: Location }) {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={onSearchKeyDown}
-              placeholder="Scan barcode, or search by name or SKU…"
+              placeholder="Scan a barcode, or search by name or SKU…"
               aria-label="Scan or search products"
               autoComplete="off"
               spellCheck={false}
-              className="h-12 rounded-xl pl-12 text-base"
+              className="h-13 rounded-2xl pl-12 text-base shadow-card"
             />
           </div>
           <Button
             variant="secondary"
             size="lg"
-            className="h-12 rounded-xl"
+            className="h-13 rounded-2xl"
             onClick={() => setScanning(true)}
             aria-label="Scan with camera"
           >
-            <Camera /> <span className="hidden sm:inline">Scan with camera</span>
+            <Camera /> <span className="hidden sm:inline">Camera</span>
           </Button>
         </div>
 
-        <Card className="overflow-hidden">
-          {search.isError ? (
-            <Alert className="m-4">{getErrorMessage(search.error)}</Alert>
-          ) : (
-            <SearchResults
-              results={search.data}
-              isLoading={search.isPending}
-              query={term}
-              currency={currency}
-              quantityInCart={quantityInCart}
-              onAdd={addItem}
-            />
-          )}
-        </Card>
+        {(categories.data?.length ?? 0) > 0 && (
+          <div
+            role="radiogroup"
+            aria-label="Category"
+            className="-mx-1 mb-4 flex gap-2 overflow-x-auto px-1 pb-1"
+          >
+            {[{ id: '', name: 'All' }, ...(categories.data ?? [])].map((category) => {
+              const selected = categoryId === category.id
+              return (
+                <button
+                  key={category.id || 'all'}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => setCategoryId(category.id)}
+                  className={cn(
+                    'h-8 shrink-0 rounded-full border px-3.5 text-[13px] font-medium transition-colors',
+                    selected
+                      ? 'border-transparent bg-foreground text-background'
+                      : 'bg-surface text-muted hover:border-border-strong hover:text-foreground',
+                  )}
+                >
+                  {category.name}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {search.isError ? (
+          <Alert>{getErrorMessage(search.error)}</Alert>
+        ) : (
+          <ProductGrid
+            items={tiles}
+            isLoading={search.isPending || (Boolean(categoryId) && categoryProducts.isPending)}
+            query={term}
+            currency={currency}
+            quantityInCart={quantityInCart}
+            onAdd={addItem}
+          />
+        )}
       </section>
 
-      <Card className="flex flex-col overflow-hidden lg:sticky lg:top-20 lg:h-[calc(100dvh-7rem)]">
+      <Card
+        id="cart"
+        className="flex scroll-mt-20 flex-col overflow-hidden lg:sticky lg:top-20 lg:h-[calc(100dvh-7rem)]"
+      >
         <CartPanel
           cart={cart}
           currency={currency}
@@ -283,7 +368,7 @@ function PosTerminal({ location }: { location: Location }) {
                       {...props}
                       value={customerName}
                       maxLength={120}
-                      placeholder="Optional"
+                      placeholder="Walk-in"
                       onChange={(event) => {
                         setCustomerName(event.target.value)
                         onSaleChanged()
@@ -309,11 +394,9 @@ function PosTerminal({ location }: { location: Location }) {
                 )}
               </div>
 
-              <dl className="space-y-1.5 text-[13px] tabular-nums">
+              <dl className="space-y-1.5 text-[13px]">
                 <div className="flex justify-between text-muted">
-                  <dt>
-                    Subtotal · {cart.itemCount} {cart.itemCount === 1 ? 'item' : 'items'}
-                  </dt>
+                  <dt>Subtotal · {pluralize(cart.itemCount, 'item')}</dt>
                   <dd>{formatMoney(fromCents(cart.subtotalCents), currency)}</dd>
                 </div>
                 {discountCents > 0 && (
@@ -322,29 +405,55 @@ function PosTerminal({ location }: { location: Location }) {
                     <dd>−{formatMoney(fromCents(discountCents), currency)}</dd>
                   </div>
                 )}
-                <div className="flex justify-between pt-1 text-lg font-semibold text-foreground">
-                  <dt>Total</dt>
-                  <dd>{formatMoney(fromCents(Math.max(totalCents, 0)), currency)}</dd>
+                <div className="flex items-baseline justify-between pt-1 text-foreground">
+                  <dt className="text-sm font-medium">Total</dt>
+                  <dd>
+                    <AnimatedNumber
+                      value={Math.max(totalCents, 0) / 100}
+                      format={formatTotal}
+                      duration={0.35}
+                      className="text-3xl font-semibold tracking-tight"
+                    />
+                  </dd>
                 </div>
               </dl>
 
               {checkoutError && <CheckoutError error={checkoutError} />}
 
               <Button
-                size="lg"
+                size="xl"
                 className="w-full"
                 onClick={checkout}
                 loading={pending}
-                disabled={cart.lines.length === 0 || cart.hasProblems || Boolean(discountError)}
+                disabled={!canCheckout}
               >
                 {checkoutError && isApiError(checkoutError) && checkoutError.isNetworkError
                   ? 'Retry checkout'
-                  : `Charge ${formatMoney(fromCents(Math.max(totalCents, 0)), currency)}`}
+                  : `Charge ${totalLabel}`}
+                <Kbd className="ml-1 border-white/25 bg-white/15 text-white shadow-none">F9</Kbd>
               </Button>
             </div>
           }
         />
       </Card>
+
+      {/* Phones: the cart sits below the product grid, so keep a summary within thumb reach. */}
+      <AnimatePresence>
+        {cart.lines.length > 0 && (
+          <motion.a
+            href="#cart"
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            className="fixed inset-x-4 bottom-4 z-30 flex items-center justify-between rounded-2xl bg-brand-gradient px-5 py-3.5 text-white shadow-glow lg:hidden"
+          >
+            <span className="text-sm font-medium">
+              {pluralize(cart.itemCount, 'item')} · View cart
+            </span>
+            <span className="text-base font-semibold">{totalLabel}</span>
+          </motion.a>
+        )}
+      </AnimatePresence>
 
       <CameraScanDialog
         open={scanning}

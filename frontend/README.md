@@ -4,7 +4,12 @@ React single-page app for StockPilot, a multi-tenant inventory and point-of-sale
 retailers. It talks to the FastAPI backend in `../backend`.
 
 **Stack:** Vite · React 19 · TypeScript (strict) · Tailwind CSS v4 · TanStack Query v5 ·
-React Router v7 · react-hook-form + zod · Recharts · lucide-react
+React Router v7 · react-hook-form + zod · Recharts · motion · lucide-react
+
+**Highlights:** a fast point-of-sale (scan, tap tiles, keyboard shortcuts, idempotent checkout),
+an inventory ledger with reconciliation, purchasing (purchase orders with partial receiving), demand
+forecasts with a reorder planner, analytics, an "Ask StockPilot" AI assistant, live updates over
+WebSocket, a ⌘K command palette, and light/dark themes.
 
 ## Getting started
 
@@ -18,8 +23,9 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173 and create an account. Registering creates an organization, makes
-you its owner, and adds a default "Main Store" location.
+Open http://localhost:5173 and create an account, or click **Try the live demo** on the sign-in
+page (demo@stockpilot.app, seeded with ~90 days of data). Registering creates an organization,
+makes you its owner, and adds a default "Main Store" location.
 
 ## Scripts
 
@@ -49,8 +55,9 @@ docker run -p 8080:80 --network <network-with-backend> stockpilot-frontend
 ```
 
 A multi-stage build: Node builds the app, then `nginx:alpine` serves `dist/`. `nginx.conf` falls
-back to `index.html` for client-side routes and proxies `/api/` to `http://backend:8000`, so the
-backend container must be reachable as `backend` (e.g. a docker-compose service name).
+back to `index.html` for client-side routes and proxies `/api/` (including the `/api/v1/ws`
+WebSocket upgrade) to `http://backend:8000`, so the backend container must be reachable as
+`backend` (e.g. a docker-compose service name).
 
 ## Project structure
 
@@ -63,11 +70,15 @@ src/
   auth/           AuthProvider, useAuth/useSession/useCan, ProtectedRoute, role helpers
   hooks/          TanStack Query hooks per domain + the query-key factory
   providers/      Theme (light/dark/system) and current-location context
+  realtime/       WebSocket provider (auth, backoff, cache updates), Live indicator
   components/
-    ui/           Button, Input, Select, Dialog, Table, Badge, Toast, EmptyState, …
-    layout/       App shell: sidebar, top bar, location switcher, user menu
-  pages/          One folder per page (dashboard, products, inventory, pos, orders, team, auth)
-  lib/            Formatting, integer-cents money helpers, validation, barcode scanner
+    ui/           Button, Input, Select, Dialog, Table, Badge, Toast, EmptyState, AnimatedNumber, …
+    layout/       App shell: collapsible sidebar, breadcrumbs, location switcher, user menu
+    command/      ⌘K command palette
+    assistant/    "Ask StockPilot" slide-over chat (markdown renderer is lazy-loaded)
+  pages/          One folder per area: dashboard, pos, products, inventory, orders, purchasing,
+                  insights (reorder planner, forecasts, analytics), team, auth
+  lib/            Formatting, integer-cents money, validation, motion presets, barcode scanner
 ```
 
 ## Design notes
@@ -94,4 +105,14 @@ src/
 - **Barcode scanning.** USB scanners type the code and press Enter; an exact barcode or SKU match is
   added straight to the cart. Camera scanning uses the native `BarcodeDetector` when the browser
   has it and otherwise lazy-loads ZXing, so ZXing isn't in the main bundle.
-- **Code splitting.** Each page is lazy-loaded, so Recharts only downloads with the dashboard.
+- **Design tokens.** Colors, shadows and chart series are CSS variables in `src/index.css`
+  (separate light and dark values), exposed to Tailwind as `bg-surface`, `text-muted`,
+  `shadow-card`, `bg-chart-1`… Components never hard-code palette colors.
+- **Motion.** Page transitions, staggered cards, spring dialogs, count-up numbers and animated cart
+  lines use `motion`; everything respects `prefers-reduced-motion`.
+- **Live updates.** After sign-in the app opens `/api/v1/ws`, authenticates in-band, and turns
+  events (`stock.changed`, `order.created`, `po.received`, `resync`) into query invalidations; POS
+  availability is patched in place. Reconnects back off exponentially; a 4401 close re-auths.
+- **Keyboard.** ⌘K / Ctrl+K opens the command palette anywhere. At the POS: F2 focuses search,
+  F9 or Ctrl/⌘+Enter charges, Esc clears; a USB barcode scanner works out of the box.
+- **Code splitting.** Each page is lazy-loaded, as are Recharts, ZXing, and marked + DOMPurify.

@@ -63,7 +63,7 @@ export function MovementsTab({ locations }: { locations: Location[] }) {
         />
       ) : (
         <>
-          <Table>
+          <Table scrollY>
             <THead>
               <TR>
                 <TH>When</TH>
@@ -97,9 +97,7 @@ export function MovementsTab({ locations }: { locations: Location[] }) {
                       <TD
                         className={cn(
                           'text-right font-semibold tabular-nums',
-                          m.quantity > 0
-                            ? 'text-emerald-600 dark:text-emerald-400'
-                            : 'text-red-600 dark:text-red-400',
+                          m.quantity > 0 ? 'text-success-ink' : 'text-danger-ink',
                         )}
                       >
                         {m.quantity > 0 ? '+' : '−'}

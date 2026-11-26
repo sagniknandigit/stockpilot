@@ -38,3 +38,18 @@ export function createIdempotencyKey(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16))
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
+
+/** "PS" for "Priya Sharma"; skips sizes like "340ml" so "Shampoo 340ml" becomes "SH". */
+export function initials(name: string): string {
+  const words = name
+    .trim()
+    .split(/\s+/)
+    .filter((word) => /^\p{L}/u.test(word))
+  if (words.length === 0) return name.trim().slice(0, 2).toUpperCase()
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase()
+  return (words[0][0] + words[1][0]).toUpperCase()
+}
+
+/** "⌘" on Apple platforms, "Ctrl" elsewhere (for shortcut hints). */
+export const modKey =
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'

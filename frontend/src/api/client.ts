@@ -1,7 +1,8 @@
 import { tokenStore } from './tokenStore'
 import type { TokenPair } from './types'
 
-const BASE_URL = (import.meta.env.VITE_API_URL ?? '/api/v1').replace(/\/$/, '')
+export const API_BASE_URL = (import.meta.env.VITE_API_URL ?? '/api/v1').replace(/\/$/, '')
+const BASE_URL = API_BASE_URL
 
 /** An error returned by the API ({"error": {code, message, details}}) or a network failure. */
 export class ApiError extends Error {
@@ -89,7 +90,7 @@ let refreshInFlight: Promise<string | null> | null = null
  * of expired requests triggers a single refresh. Resolves to the new access token, or null
  * (and logs out) when the session can't be renewed.
  */
-function refreshAccessToken(): Promise<string | null> {
+export function refreshAccessToken(): Promise<string | null> {
   refreshInFlight ??= (async () => {
     const refreshToken = tokenStore.get()?.refreshToken
     if (!refreshToken) return null

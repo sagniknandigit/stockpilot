@@ -4,6 +4,7 @@ import type { Role, User } from '@/api/types'
 import { useCan, useSession } from '@/auth/AuthContext'
 import { ROLE_LABELS } from '@/auth/roles'
 import { Alert } from '@/components/ui/Alert'
+import { Avatar } from '@/components/ui/Avatar'
 import { Badge, type BadgeTone } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -64,14 +65,19 @@ export function TeamPage() {
               ) : (
                 users.data.map((user) => (
                   <TR key={user.id}>
-                    <TD className="min-w-44">
-                      <p className="font-medium text-foreground">
-                        {user.full_name}
-                        {user.id === me.id && (
-                          <span className="font-normal text-muted"> (you)</span>
-                        )}
-                      </p>
-                      <p className="text-xs text-muted">{user.email}</p>
+                    <TD className="min-w-52">
+                      <div className="flex items-center gap-3">
+                        <Avatar name={user.full_name} brand={user.id === me.id} />
+                        <div className="min-w-0">
+                          <p className="font-medium text-foreground">
+                            {user.full_name}
+                            {user.id === me.id && (
+                              <span className="font-normal text-muted"> (you)</span>
+                            )}
+                          </p>
+                          <p className="text-xs text-muted">{user.email}</p>
+                        </div>
+                      </div>
                     </TD>
                     <TD>
                       {editable(user) ? (
@@ -104,9 +110,11 @@ export function TeamPage() {
                     </TD>
                     <TD>
                       {user.is_active ? (
-                        <Badge tone="success">Active</Badge>
+                        <Badge tone="success" dot>
+                          Active
+                        </Badge>
                       ) : (
-                        <Badge>Deactivated</Badge>
+                        <Badge dot>Deactivated</Badge>
                       )}
                     </TD>
                     <TD className="whitespace-nowrap text-muted">
@@ -119,7 +127,7 @@ export function TeamPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="text-red-600 dark:text-red-400"
+                              className="text-danger-ink"
                               onClick={() => setDeactivating(user)}
                             >
                               Deactivate

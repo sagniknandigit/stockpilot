@@ -1,5 +1,7 @@
 import { CircleAlert, CircleCheck, Info, X } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef } from 'react'
+import { spring } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 import { toast, useToasts, type ToastVariant } from './toast'
 
@@ -10,8 +12,8 @@ const icons: Record<ToastVariant, typeof Info> = {
 }
 
 const iconColors: Record<ToastVariant, string> = {
-  success: 'text-emerald-500',
-  error: 'text-red-500',
+  success: 'text-success',
+  error: 'text-danger',
   info: 'text-accent',
 }
 
@@ -35,34 +37,41 @@ export function Toaster() {
       className="pointer-events-none fixed inset-auto top-14 right-0 m-0 flex w-full max-w-sm flex-col gap-2 overflow-visible border-0 bg-transparent p-4"
     >
       <div aria-live="polite" role="status" className="flex flex-col gap-2">
-        {toasts.map((item) => {
-          const Icon = icons[item.variant]
-          return (
-            <div
-              key={item.id}
-              className="pointer-events-auto flex animate-toast-in items-start gap-3 rounded-xl border bg-surface p-3.5 shadow-lg"
-            >
-              <Icon
-                className={cn('mt-0.5 size-4 shrink-0', iconColors[item.variant])}
-                aria-hidden="true"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-foreground">{item.title}</p>
-                {item.description && (
-                  <p className="mt-0.5 text-[13px] text-muted">{item.description}</p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => toast.dismiss(item.id)}
-                className="rounded text-muted hover:text-foreground"
-                aria-label="Dismiss notification"
+        <AnimatePresence initial={false}>
+          {toasts.map((item) => {
+            const Icon = icons[item.variant]
+            return (
+              <motion.div
+                key={item.id}
+                layout
+                initial={{ opacity: 0, y: -8, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, x: 24, transition: { duration: 0.15 } }}
+                transition={spring}
+                className="pointer-events-auto flex items-start gap-3 rounded-xl border bg-surface-raised p-3.5 shadow-pop"
               >
-                <X className="size-4" />
-              </button>
-            </div>
-          )
-        })}
+                <Icon
+                  className={cn('mt-0.5 size-4 shrink-0', iconColors[item.variant])}
+                  aria-hidden="true"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-foreground">{item.title}</p>
+                  {item.description && (
+                    <p className="mt-0.5 text-[13px] text-muted">{item.description}</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => toast.dismiss(item.id)}
+                  className="rounded text-muted hover:text-foreground"
+                  aria-label="Dismiss notification"
+                >
+                  <X className="size-4" />
+                </button>
+              </motion.div>
+            )
+          })}
+        </AnimatePresence>
       </div>
     </div>
   )

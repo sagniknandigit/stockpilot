@@ -56,11 +56,54 @@ export const router = createBrowserRouter([
             element: lazyPage(() => import('@/pages/orders/OrdersPage'), 'OrdersPage'),
           },
           {
+            path: 'purchasing',
+            element: lazyPage(
+              () => import('@/pages/purchasing/PurchaseOrdersPage'),
+              'PurchaseOrdersPage',
+            ),
+          },
+          {
+            path: 'purchasing/suppliers',
+            element: lazyPage(() => import('@/pages/purchasing/SuppliersPage'), 'SuppliersPage'),
+          },
+          {
+            path: 'purchasing/orders/:poId',
+            element: lazyPage(
+              () => import('@/pages/purchasing/PurchaseOrderDetailPage'),
+              'PurchaseOrderDetailPage',
+            ),
+          },
+          {
+            path: 'insights',
+            element: lazyPage(
+              () => import('@/pages/insights/ReorderPlannerPage'),
+              'ReorderPlannerPage',
+            ),
+          },
+          {
             element: <ProtectedRoute minimumRole="manager" />,
             children: [
               {
                 path: 'team',
                 element: lazyPage(() => import('@/pages/team/TeamPage'), 'TeamPage'),
+              },
+              {
+                path: 'purchasing/new',
+                element: lazyPage(
+                  () => import('@/pages/purchasing/PurchaseOrderEditorPage'),
+                  'PurchaseOrderEditorPage',
+                ),
+              },
+              {
+                path: 'purchasing/orders/:poId/edit',
+                element: lazyPage(
+                  () => import('@/pages/purchasing/PurchaseOrderEditorPage'),
+                  'PurchaseOrderEditorPage',
+                ),
+              },
+              {
+                path: 'insights/analytics',
+                element: lazyPage(() => import('@/pages/insights/AnalyticsPage'), 'AnalyticsPage'),
               },
             ],
           },

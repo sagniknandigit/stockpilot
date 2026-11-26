@@ -350,3 +350,203 @@ export interface Summary {
   today_revenue: Money
   last_7_days: DailySales[]
 }
+
+// --- Purchasing ----------------------------------------------------------------------------
+
+export interface Supplier {
+  id: UUID
+  name: string
+  email: string | null
+  phone: string | null
+  lead_time_days: number
+  notes: string | null
+  is_active: boolean
+}
+
+export interface SupplierInput {
+  name: string
+  email?: string | null
+  phone?: string | null
+  lead_time_days?: number
+  notes?: string | null
+}
+
+export interface SupplierUpdateInput extends Partial<SupplierInput> {
+  is_active?: boolean
+}
+
+export type PurchaseOrderStatus =
+  'draft' | 'ordered' | 'partially_received' | 'received' | 'cancelled'
+
+export interface PurchaseOrderLine {
+  id: UUID
+  variant_id: UUID
+  sku: string
+  name: string
+  quantity_ordered: number
+  quantity_received: number
+  quantity_outstanding: number
+  unit_cost: Money
+  line_total: Money
+}
+
+export interface PurchaseOrder {
+  id: UUID
+  number: number
+  status: PurchaseOrderStatus
+  supplier_id: UUID
+  supplier_name: string
+  location_id: UUID
+  location_code: string
+  /** Calendar date "YYYY-MM-DD". */
+  expected_at: string | null
+  notes: string | null
+  total_cost: Money
+  created_by: UUID | null
+  created_at: DateTime
+  ordered_at: DateTime | null
+  received_at: DateTime | null
+  lines: PurchaseOrderLine[]
+}
+
+export interface PurchaseOrderLineInput {
+  variant_id: UUID
+  quantity: number
+  unit_cost: Money
+}
+
+export interface PurchaseOrderInput {
+  supplier_id: UUID
+  location_id: UUID
+  expected_at?: string | null
+  notes?: string | null
+  lines: PurchaseOrderLineInput[]
+}
+
+export type PurchaseOrderUpdateInput = Partial<PurchaseOrderInput>
+
+export interface PurchaseOrderListParams extends PageParams {
+  status?: PurchaseOrderStatus
+  supplier_id?: UUID
+}
+
+export interface ReceiveInput {
+  lines: { line_id: UUID; quantity: number }[]
+  note?: string | null
+}
+
+export interface FromSuggestionsInput {
+  supplier_id: UUID
+  location_id: UUID
+  variant_ids: UUID[]
+}
+
+// --- Insights ------------------------------------------------------------------------------
+
+export type Urgency = 'critical' | 'warning' | 'ok'
+
+export interface ForecastAccuracy {
+  holdout_days: number
+  /** Weighted absolute percentage error, 0–1 (lower is better). */
+  model_wape: number | null
+  baseline_wape: number | null
+  improvement_pct: number | null
+}
+
+export interface ReorderSuggestion {
+  variant_id: UUID
+  product_id: UUID
+  sku: string
+  product_name: string
+  variant_name: string
+  available: number
+  on_order: number
+  avg_daily_demand: number
+  days_of_cover: number | null
+  stockout_date: string | null
+  lead_time_days: number
+  safety_stock: number
+  suggested_qty: number
+  unit_cost: Money
+  urgency: Urgency
+  last_supplier_id: UUID | null
+  last_supplier_name: string | null
+}
+
+export interface ReorderSuggestions {
+  generated_at: DateTime
+  history_days: number
+  service_level: number
+  accuracy: ForecastAccuracy
+  items: ReorderSuggestion[]
+}
+
+export interface ForecastPoint {
+  day: string
+  actual: number | null
+  forecast: number | null
+}
+
+export interface VariantForecast {
+  variant_id: UUID
+  sku: string
+  product_name: string
+  variant_name: string
+  avg_daily_demand: number
+  model_wape: number | null
+  baseline_wape: number | null
+  points: ForecastPoint[]
+}
+
+export type AbcClass = 'A' | 'B' | 'C'
+
+export interface Analytics {
+  date_from: string
+  date_to: string
+  totals: {
+    revenue: Money
+    orders: number
+    units: number
+    gross_profit: Money
+    gross_margin_pct: number | null
+    avg_order_value: Money
+    revenue_change_pct: number | null
+  }
+  daily: { day: string; revenue: Money; orders: number; gross_profit: Money }[]
+  products: {
+    variant_id: UUID
+    sku: string
+    name: string
+    units: number
+    revenue: Money
+    gross_profit: Money
+    abc_class: AbcClass
+  }[]
+  slow_movers: {
+    variant_id: UUID
+    sku: string
+    name: string
+    on_hand: number
+    stock_value: Money
+    units_sold: number
+    last_sold_at: DateTime | null
+  }[]
+  abc: { abc_class: AbcClass; variants: number; revenue: Money; revenue_share: number }[]
+  categories: { category: string; revenue: Money; units: number }[]
+  inventory: {
+    stock_value: Money
+    cogs: Money
+    turnover: number | null
+    days_of_inventory: number | null
+  }
+}
+
+// --- Assistant -----------------------------------------------------------------------------
+
+export interface AssistantAnswer {
+  /** Markdown. */
+  answer: string
+  tool_calls: { name: string; input: unknown; is_error: boolean }[]
+  model: string
+  usage: Record<string, number>
+}

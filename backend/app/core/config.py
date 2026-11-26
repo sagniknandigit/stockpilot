@@ -21,6 +21,10 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["http://localhost:5173"]
 
+    # Ask StockPilot (natural-language questions). Disabled when no key is set.
+    anthropic_api_key: str | None = None
+    assistant_model: str = "claude-opus-5-5"
+
     @property
     def is_test(self) -> bool:
         return self.environment == "test"

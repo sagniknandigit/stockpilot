@@ -53,6 +53,7 @@ function useInvalidateStock() {
     Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all }),
       queryClient.invalidateQueries({ queryKey: queryKeys.reports.all }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.insights.all }),
       queryClient.invalidateQueries({ queryKey: queryKeys.catalog.variantSearches() }),
     ])
 }

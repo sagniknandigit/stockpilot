@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import PageParams
+from app.core.events import queue_event
 from app.core.exceptions import Conflict, Forbidden, NotFound, Unprocessable
 from app.models import (
     Location,
@@ -159,6 +160,17 @@ async def create_order(
                 )
                 for line in data.lines
             ],
+        )
+        queue_event(
+            db,
+            org_id,
+            {
+                "type": "order.created",
+                "order_id": str(order.id),
+                "number": order.number,
+                "total": str(order.total),
+                "location_id": str(location.id),
+            },
         )
         await db.commit()
     except IntegrityError:

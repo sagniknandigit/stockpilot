@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/Switch'
 import { Table, TableSkeleton, TBody, TD, TH, THead, TR } from '@/components/ui/Table'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useStock } from '@/hooks/useInventory'
+import { useRealtimeEvents } from '@/realtime/RealtimeContext'
 import { getErrorMessage } from '@/lib/errors'
 import { formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -44,6 +45,22 @@ export function StockTab({ locations, lowOnly, onLowOnlyChange }: StockTabProps)
     low_stock: lowOnly || undefined,
   })
   const columns = canManage ? 9 : 8
+  // Briefly highlight rows whose stock just changed (from this or another till).
+  const [flashed, setFlashed] = useState<Set<string>>(new Set())
+  useRealtimeEvents((event) => {
+    if (event.type !== 'stock.changed') return
+    const key = `${event.variant_id}-${event.location_id}`
+    setFlashed((current) => new Set(current).add(key))
+    window.setTimeout(
+      () =>
+        setFlashed((current) => {
+          const next = new Set(current)
+          next.delete(key)
+          return next
+        }),
+      1600,
+    )
+  })
 
   return (
     <>
@@ -109,7 +126,7 @@ export function StockTab({ locations, lowOnly, onLowOnlyChange }: StockTabProps)
         />
       ) : (
         <>
-          <Table>
+          <Table scrollY>
             <THead>
               <TR>
                 <TH>Product</TH>
@@ -130,7 +147,11 @@ export function StockTab({ locations, lowOnly, onLowOnlyChange }: StockTabProps)
                 <TableSkeleton columns={columns} />
               ) : (
                 stock.data.items.map((row) => (
-                  <TR key={`${row.variant_id}-${row.location_id}`}>
+                  <TR
+                    key={`${row.variant_id}-${row.location_id}`}
+                    data-flash={flashed.has(`${row.variant_id}-${row.location_id}`) || undefined}
+                    className="data-flash:animate-flash"
+                  >
                     <TD className="min-w-44">
                       <p className="font-medium text-foreground">{row.product_name}</p>
                       <p className="text-xs text-muted">{row.variant_name}</p>
@@ -143,7 +164,7 @@ export function StockTab({ locations, lowOnly, onLowOnlyChange }: StockTabProps)
                     <TD
                       className={cn(
                         'text-right font-medium tabular-nums',
-                        row.available <= 0 && 'text-red-600 dark:text-red-400',
+                        row.available <= 0 && 'text-danger-ink',
                       )}
                     >
                       {formatNumber(row.available)}
@@ -151,9 +172,7 @@ export function StockTab({ locations, lowOnly, onLowOnlyChange }: StockTabProps)
                     <TD
                       className={cn(
                         'text-right tabular-nums',
-                        row.is_low
-                          ? 'font-medium text-amber-700 dark:text-amber-400'
-                          : 'text-muted',
+                        row.is_low ? 'font-medium text-warning-ink' : 'text-muted',
                       )}
                     >
                       {formatNumber(row.variant_available)}
@@ -162,11 +181,17 @@ export function StockTab({ locations, lowOnly, onLowOnlyChange }: StockTabProps)
                     <TD>
                       {/* Status is per variant: low when the all-locations total hits the reorder point. */}
                       {row.variant_available <= 0 ? (
-                        <Badge tone="danger">Out of stock</Badge>
+                        <Badge tone="danger" dot>
+                          Out of stock
+                        </Badge>
                       ) : row.is_low ? (
-                        <Badge tone="warning">Low</Badge>
+                        <Badge tone="warning" dot>
+                          Low
+                        </Badge>
                       ) : (
-                        <Badge tone="success">In stock</Badge>
+                        <Badge tone="success" dot>
+                          In stock
+                        </Badge>
                       )}
                     </TD>
                     {canManage && (

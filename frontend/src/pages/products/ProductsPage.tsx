@@ -1,6 +1,6 @@
 import { Package, Plus, Search } from 'lucide-react'
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { useCan, useSession } from '@/auth/AuthContext'
 import { Alert } from '@/components/ui/Alert'
 import { Badge } from '@/components/ui/Badge'
@@ -29,7 +29,19 @@ export function ProductsPage() {
   const [categoryId, setCategoryId] = useState('')
   const [includeInactive, setIncludeInactive] = useState(false)
   const [page, setPage] = useState(1)
-  const [creating, setCreating] = useState(false)
+  // ?new=1 opens the dialog (used by the command palette and dashboard shortcuts).
+  const [params, setParams] = useSearchParams()
+  const creating = canManage && params.get('new') === '1'
+  const setCreating = (open: boolean) =>
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        if (open) next.set('new', '1')
+        else next.delete('new')
+        return next
+      },
+      { replace: true },
+    )
   const q = useDebouncedValue(search.trim())
 
   const categories = useCategories()
@@ -126,7 +138,7 @@ export function ProductsPage() {
           )
         ) : (
           <>
-            <Table>
+            <Table scrollY>
               <THead>
                 <TR>
                   <TH>Product</TH>
@@ -166,9 +178,11 @@ export function ProductsPage() {
                       </TD>
                       <TD>
                         {product.is_active ? (
-                          <Badge tone="success">Active</Badge>
+                          <Badge tone="success" dot>
+                            Active
+                          </Badge>
                         ) : (
-                          <Badge>Inactive</Badge>
+                          <Badge dot>Inactive</Badge>
                         )}
                       </TD>
                     </TR>

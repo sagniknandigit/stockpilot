@@ -1,5 +1,6 @@
 import { ReceiptText, X } from 'lucide-react'
 import { useState } from 'react'
+import { useSearchParams } from 'react-router'
 import type { OrderStatus } from '@/api/types'
 import { useSession } from '@/auth/AuthContext'
 import { Alert } from '@/components/ui/Alert'
@@ -26,7 +27,19 @@ export function OrdersPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [page, setPage] = useState(1)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // The open order lives in the URL (?order=…) so the dashboard feed can deep-link to it.
+  const [params, setParams] = useSearchParams()
+  const selectedId = params.get('order')
+  const setSelectedId = (id: string | null) =>
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        if (id) next.set('order', id)
+        else next.delete('order')
+        return next
+      },
+      { replace: true },
+    )
 
   const orders = useOrders({
     page,
@@ -110,7 +123,7 @@ export function OrdersPage() {
           />
         ) : (
           <>
-            <Table>
+            <Table scrollY>
               <THead>
                 <TR>
                   <TH>Order</TH>

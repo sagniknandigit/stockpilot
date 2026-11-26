@@ -32,7 +32,7 @@ export const catalogApi = {
   searchVariants: (locationId: UUID, q: string, signal?: AbortSignal) =>
     api.get<VariantSearchResult[]>(
       '/catalog/variants/search',
-      { location_id: locationId, q, limit: 20 },
+      { location_id: locationId, q, limit: 50 },
       signal,
     ),
 }

@@ -55,9 +55,11 @@ export function LocationsTab({ locations }: { locations: Location[] }) {
                   <TD className="text-muted">{location.address ?? '—'}</TD>
                   <TD>
                     {location.is_active ? (
-                      <Badge tone="success">Active</Badge>
+                      <Badge tone="success" dot>
+                        Active
+                      </Badge>
                     ) : (
-                      <Badge>Inactive</Badge>
+                      <Badge dot>Inactive</Badge>
                     )}
                   </TD>
                 </TR>

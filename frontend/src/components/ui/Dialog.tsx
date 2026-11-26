@@ -1,5 +1,7 @@
 import { X } from 'lucide-react'
+import { motion, useReducedMotion } from 'motion/react'
 import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { spring } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 import { Button } from './Button'
 
@@ -14,6 +16,8 @@ interface DialogProps {
   /** "drawer" slides in from the right edge (used for detail panels). */
   variant?: 'modal' | 'drawer'
   className?: string
+  /** Replaces the body padding (e.g. `overflow-hidden` when the content manages its own layout). */
+  bodyClassName?: string
 }
 
 const widths = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' }
@@ -36,6 +40,7 @@ function DialogContent({
   size = 'md',
   variant = 'modal',
   className,
+  bodyClassName,
 }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null)
   const titleId = useId()
@@ -55,10 +60,16 @@ function DialogContent({
   }, [])
 
   const drawer = variant === 'drawer'
+  const reduceMotion = useReducedMotion()
 
   return (
-    <dialog
+    <motion.dialog
       ref={ref}
+      initial={
+        reduceMotion ? false : drawer ? { x: 48, opacity: 0 } : { opacity: 0, scale: 0.96, y: 10 }
+      }
+      animate={drawer ? { x: 0, opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
+      transition={spring}
       aria-labelledby={titleId}
       onCancel={(event) => {
         event.preventDefault()
@@ -72,10 +83,10 @@ function DialogContent({
         if (pressStartedOnBackdrop.current && event.target === event.currentTarget) onClose()
       }}
       className={cn(
-        'border bg-surface text-foreground shadow-2xl backdrop:bg-black/40 backdrop:backdrop-blur-[2px]',
+        'border bg-surface-raised text-foreground shadow-pop backdrop:bg-black/45 backdrop:backdrop-blur-sm',
         drawer
-          ? 'my-0 mr-0 ml-auto h-dvh max-h-dvh w-full max-w-xl animate-drawer-in rounded-none border-y-0 border-r-0'
-          : 'm-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] animate-dialog-in rounded-xl',
+          ? 'my-0 mr-0 ml-auto h-dvh max-h-dvh w-full max-w-xl rounded-none border-y-0 border-r-0'
+          : 'm-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] rounded-2xl',
         !drawer && widths[size],
         className,
       )}
@@ -98,13 +109,13 @@ function DialogContent({
             <X />
           </Button>
         </header>
-        <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        <div className={cn('flex-1 overflow-y-auto', bodyClassName ?? 'px-5 py-4')}>{children}</div>
         {footer && (
-          <footer className="flex flex-wrap justify-end gap-2 border-t bg-subtle/40 px-5 py-3">
+          <footer className="flex flex-wrap justify-end gap-2 border-t bg-subtle/50 px-5 py-3">
             {footer}
           </footer>
         )}
       </div>
-    </dialog>
+    </motion.dialog>
   )
 }

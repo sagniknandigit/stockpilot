@@ -1,5 +1,6 @@
 import type {
   MovementListParams,
+  PurchaseOrderListParams,
   OrderListParams,
   ProductListParams,
   StockListParams,
@@ -42,5 +43,20 @@ export const queryKeys = {
   },
   users: {
     all: ['users'] as const,
+  },
+  purchasing: {
+    all: ['purchasing'] as const,
+    suppliers: (includeInactive: boolean) =>
+      [...queryKeys.purchasing.all, 'suppliers', includeInactive] as const,
+    orders: (params: PurchaseOrderListParams) =>
+      [...queryKeys.purchasing.all, 'orders', params] as const,
+    order: (id: UUID) => [...queryKeys.purchasing.all, 'order', id] as const,
+  },
+  insights: {
+    all: ['insights'] as const,
+    reorder: (onlyNeeded: boolean) => [...queryKeys.insights.all, 'reorder', onlyNeeded] as const,
+    forecast: (variantId: UUID) => [...queryKeys.insights.all, 'forecast', variantId] as const,
+    analytics: (from: string, to: string) =>
+      [...queryKeys.insights.all, 'analytics', from, to] as const,
   },
 }

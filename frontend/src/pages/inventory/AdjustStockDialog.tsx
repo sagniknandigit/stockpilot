@@ -87,12 +87,12 @@ function AdjustForm({ row, onDone }: { row: StockRow; onDone: () => void }) {
         <Stat
           label="Change"
           value={delta > 0 ? `+${delta}` : delta}
-          className={cn(delta > 0 && 'text-emerald-600', delta < 0 && 'text-red-600')}
+          className={cn(delta > 0 && 'text-success-ink', delta < 0 && 'text-danger-ink')}
         />
         <Stat
           label="New on hand"
           value={projected}
-          className={cn(projected < 0 && 'text-red-600')}
+          className={cn(projected < 0 && 'text-danger-ink')}
         />
       </div>
       <div className="grid gap-4 sm:grid-cols-2">

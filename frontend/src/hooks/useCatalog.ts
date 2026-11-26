@@ -27,11 +27,12 @@ export function useCreateCategory() {
   })
 }
 
-export function useProducts(params: ProductListParams) {
+export function useProducts(params: ProductListParams, enabled = true) {
   return useQuery({
     queryKey: queryKeys.catalog.products(params),
     queryFn: () => catalogApi.listProducts(params),
     placeholderData: keepPreviousData,
+    enabled,
   })
 }
 
@@ -98,12 +99,13 @@ export interface VariantLabel {
   productName: string
   variantName: string
   sku: string
+  cost: string
 }
 
 /**
- * Reconcile mismatches only carry variant ids. This builds an id -> label map from the first
- * 100 products (including inactive ones), which covers a small shop's catalog. Mismatches are
- * expected to be rare, so unknown ids simply fall back to a short id.
+ * Variant id -> label/cost map from the first 100 products (including inactive ones), which
+ * covers a small shop's catalog. Used where the API only returns ids (reconcile mismatches) and
+ * to default purchase order unit costs (the POS search result has price but not cost).
  */
 export function useVariantLookup() {
   return useQuery({
@@ -118,6 +120,7 @@ export function useVariantLookup() {
             productName: product.name,
             variantName: variant.name,
             sku: variant.sku,
+            cost: variant.cost,
           }),
         )
       }

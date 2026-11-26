@@ -99,7 +99,7 @@ function CameraScanner({
         {status.state === 'scanning' && (
           // Aiming guide with a sweeping scan line.
           <div className="pointer-events-none absolute inset-x-10 top-1/2 h-28 -translate-y-1/2 rounded-lg border-2 border-white/80 shadow-[0_0_0_9999px_rgb(0_0_0/0.35)]">
-            <div className="absolute inset-x-2 top-1/2 h-0.5 animate-pulse bg-red-500" />
+            <div className="absolute inset-x-2 top-1/2 h-0.5 animate-pulse bg-danger" />
           </div>
         )}
         {status.state === 'error' && (

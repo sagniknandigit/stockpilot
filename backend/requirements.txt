@@ -8,3 +8,4 @@ pydantic-settings>=2.6
 email-validator>=2.2
 pyjwt>=2.9
 bcrypt>=4.2
+anthropic>=2.14

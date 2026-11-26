@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { salesApi } from '@/api/sales'
 import type { OrderInput, OrderListParams, UUID } from '@/api/types'
+import { rememberLocalOrder } from '@/realtime/events'
 import { queryKeys } from './queryKeys'
 
 export function useOrders(params: OrderListParams) {
@@ -27,6 +28,7 @@ function useInvalidateAfterSale() {
       queryClient.invalidateQueries({ queryKey: queryKeys.sales.all }),
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all }),
       queryClient.invalidateQueries({ queryKey: queryKeys.reports.all }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.insights.all }),
       queryClient.invalidateQueries({ queryKey: queryKeys.catalog.variantSearches() }),
     ])
 }
@@ -36,7 +38,10 @@ export function useCreateOrder() {
   return useMutation({
     mutationFn: ({ input, idempotencyKey }: { input: OrderInput; idempotencyKey: string }) =>
       salesApi.createOrder(input, idempotencyKey),
-    onSuccess: invalidate,
+    onSuccess: ({ order }) => {
+      rememberLocalOrder(order.id)
+      return invalidate()
+    },
     // The POS page renders checkout errors inline (e.g. highlighting short lines).
     meta: { silentError: true },
   })

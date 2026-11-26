@@ -40,7 +40,7 @@ export function ReconcileDialog({ open, onClose }: { open: boolean; onClose: () 
         <Alert>{getErrorMessage(result.error)}</Alert>
       ) : result.data.mismatches.length === 0 ? (
         <div className="flex flex-col items-center py-6 text-center">
-          <div className="mb-3 grid size-12 place-items-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+          <div className="mb-3 grid size-12 place-items-center rounded-full bg-success/10 text-success-ink">
             <CircleCheck className="size-6" aria-hidden="true" />
           </div>
           <p className="font-semibold text-foreground">Ledger matches</p>
@@ -79,7 +79,7 @@ export function ReconcileDialog({ open, onClose }: { open: boolean; onClose: () 
                       <TD>{locationCode(m.location_id)}</TD>
                       <TD className="text-right tabular-nums">{m.on_hand}</TD>
                       <TD className="text-right tabular-nums">{m.ledger_total}</TD>
-                      <TD className="text-right font-medium text-red-600 tabular-nums">
+                      <TD className="text-right font-medium text-danger-ink tabular-nums">
                         {m.on_hand - m.ledger_total}
                       </TD>
                     </TR>

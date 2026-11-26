@@ -1,8 +1,10 @@
 import {
   LayoutDashboard,
+  Lightbulb,
   Package,
   ReceiptText,
   ScanBarcode,
+  Truck,
   Users,
   Warehouse,
   type LucideIcon,
@@ -14,13 +16,48 @@ export interface NavItem {
   label: string
   icon: LucideIcon
   minimumRole?: Role
+  /** For modules that aren't released yet: shown disabled with a "Soon" tag. */
+  comingSoon?: boolean
 }
 
-export const NAV_ITEMS: NavItem[] = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/pos', label: 'Point of sale', icon: ScanBarcode },
-  { to: '/products', label: 'Products', icon: Package },
-  { to: '/inventory', label: 'Inventory', icon: Warehouse },
-  { to: '/orders', label: 'Orders', icon: ReceiptText },
-  { to: '/team', label: 'Team', icon: Users, minimumRole: 'manager' },
+export interface NavGroup {
+  label: string
+  items: NavItem[]
+}
+
+export const NAV_GROUPS: NavGroup[] = [
+  {
+    label: 'Overview',
+    items: [{ to: '/', label: 'Dashboard', icon: LayoutDashboard }],
+  },
+  {
+    label: 'Sell',
+    items: [
+      { to: '/pos', label: 'Point of sale', icon: ScanBarcode },
+      { to: '/orders', label: 'Orders', icon: ReceiptText },
+    ],
+  },
+  {
+    label: 'Stock',
+    items: [
+      { to: '/products', label: 'Products', icon: Package },
+      { to: '/inventory', label: 'Inventory', icon: Warehouse },
+      {
+        to: '/purchasing',
+        label: 'Purchasing',
+        icon: Truck,
+      },
+    ],
+  },
+  {
+    label: 'Analyze',
+    items: [{ to: '/insights', label: 'Insights', icon: Lightbulb }],
+  },
+  {
+    label: 'Admin',
+    items: [{ to: '/team', label: 'Team', icon: Users, minimumRole: 'manager' }],
+  },
 ]
+
+/** Flat list, e.g. for the command palette and breadcrumbs. */
+export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((group) => group.items)

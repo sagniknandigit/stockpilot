@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { ArrowLeft, PackageX, Pencil, Plus } from 'lucide-react'
+import { ArrowLeft, LineChart, PackageX, Pencil, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { Link, useParams } from 'react-router'
@@ -20,6 +20,7 @@ import { toast } from '@/components/ui/toast'
 import { useProduct, useUpdateProduct, useUpdateVariant } from '@/hooks/useCatalog'
 import { getErrorMessage, isApiError } from '@/lib/errors'
 import { formatDate, formatMoney, pluralize } from '@/lib/format'
+import { ForecastDialog } from '@/pages/insights/ForecastDialog'
 import { CategoryField } from './CategoryField'
 import { VariantDialog } from './VariantDialog'
 
@@ -72,6 +73,7 @@ function ProductDetail({ product }: { product: Product }) {
   const updateProduct = useUpdateProduct(product.id)
   const updateVariant = useUpdateVariant()
   const [variantDialog, setVariantDialog] = useState<{ variant: Variant | null } | null>(null)
+  const [forecastFor, setForecastFor] = useState<string | null>(null)
 
   const form = useForm<DetailsForm>({
     resolver: zodResolver(detailsSchema),
@@ -103,7 +105,13 @@ function ProductDetail({ product }: { product: Product }) {
             <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
               {product.name}
             </h1>
-            {product.is_active ? <Badge tone="success">Active</Badge> : <Badge>Inactive</Badge>}
+            {product.is_active ? (
+              <Badge tone="success" dot>
+                Active
+              </Badge>
+            ) : (
+              <Badge dot>Inactive</Badge>
+            )}
           </div>
           <p className="mt-1 text-[13px] text-muted">
             {product.category?.name ?? 'Uncategorized'} · Added{' '}
@@ -189,11 +197,9 @@ function ProductDetail({ product }: { product: Product }) {
                 <TH className="text-right">Cost</TH>
                 <TH className="text-right">Reorder at</TH>
                 <TH>Status</TH>
-                {canManage && (
-                  <TH className="w-px">
-                    <span className="sr-only">Actions</span>
-                  </TH>
-                )}
+                <TH className="w-px">
+                  <span className="sr-only">Actions</span>
+                </TH>
               </TR>
             </THead>
             <TBody>
@@ -222,24 +228,38 @@ function ProductDetail({ product }: { product: Product }) {
                         }
                       />
                     ) : variant.is_active ? (
-                      <Badge tone="success">Active</Badge>
+                      <Badge tone="success" dot>
+                        Active
+                      </Badge>
                     ) : (
-                      <Badge>Inactive</Badge>
+                      <Badge dot>Inactive</Badge>
                     )}
                   </TD>
-                  {canManage && (
-                    <TD>
+                  <TD>
+                    <div className="flex justify-end gap-1">
                       <Button
                         variant="ghost"
                         size="icon"
                         className="size-8"
-                        onClick={() => setVariantDialog({ variant })}
-                        aria-label={`Edit ${variant.name}`}
+                        onClick={() => setForecastFor(variant.id)}
+                        aria-label={`Forecast for ${variant.name}`}
+                        title="Demand forecast"
                       >
-                        <Pencil />
+                        <LineChart />
                       </Button>
-                    </TD>
-                  )}
+                      {canManage && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-8"
+                          onClick={() => setVariantDialog({ variant })}
+                          aria-label={`Edit ${variant.name}`}
+                        >
+                          <Pencil />
+                        </Button>
+                      )}
+                    </div>
+                  </TD>
                 </TR>
               ))}
             </TBody>
@@ -247,6 +267,7 @@ function ProductDetail({ product }: { product: Product }) {
         </Card>
       </div>
 
+      <ForecastDialog variantId={forecastFor} onClose={() => setForecastFor(null)} />
       <VariantDialog
         productId={product.id}
         variant={variantDialog?.variant ?? null}

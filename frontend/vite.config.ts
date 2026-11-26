@@ -12,7 +12,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:8000',
+      // ws: true also forwards the realtime WebSocket (/api/v1/ws).
+      '/api': { target: 'http://localhost:8000', ws: true },
     },
   },
 })

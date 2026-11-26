@@ -28,16 +28,31 @@ from app.models import (
     Organization,
     Product,
     ProductVariant,
+    PurchaseOrder,
+    PurchaseOrderLine,
+    PurchaseOrderStatus,
     Role,
     SalesOrder,
     SalesOrderLine,
     StockLevel,
     StockMovement,
+    Supplier,
     User,
 )
 
 DEMO_EMAIL = "demo@stockpilot.app"
 DEMO_PASSWORD = "demo-password"
+
+# category -> (supplier, lead time in days, email)
+SUPPLIERS = {
+    "Beverages": ("Himalayan Beverages Pvt Ltd", 4, "orders@himalayan-bev.example"),
+    "Snacks": ("CrunchCo Distributors", 6, "sales@crunchco.example"),
+    "Household": ("CleanHome Supplies", 8, "hello@cleanhome.example"),
+    "Personal Care": ("PureCare Wholesale", 7, "trade@purecare.example"),
+    "Dairy": ("Morning Dew Dairy", 2, "dispatch@morningdew.example"),
+    "Bakery": ("Golden Crust Bakery", 1, "bake@goldencrust.example"),
+    "Stationery": ("Inkwell Stationers", 10, "b2b@inkwell.example"),
+}
 DAYS = 90
 WEEKDAY_FACTOR = [0.8, 0.85, 0.9, 1.0, 1.25, 1.5, 1.2]  # Mon..Sun
 
@@ -136,6 +151,7 @@ async def seed(reset: bool) -> None:
 
         categories: dict[str, Category] = {}
         variants: list[tuple[ProductVariant, str, float]] = []  # (variant, label, demand)
+        variant_cats: list[str] = []
         for cat_name, product_name, variant_specs in CATALOG:
             if cat_name not in categories:
                 categories[cat_name] = Category(org_id=org.id, name=cat_name)
@@ -154,6 +170,7 @@ async def seed(reset: bool) -> None:
                 product.variants.append(v)
                 label = product_name if vname == "Default" else f"{product_name} - {vname}"
                 variants.append((v, label, demand))
+                variant_cats.append(cat_name)
             db.add(product)
         await db.flush()
 
@@ -218,6 +235,8 @@ async def seed(reset: bool) -> None:
         # Opening stock = everything sold + a closing balance. Some SKUs end below their
         # reorder point so the low-stock alerts and reorder suggestions have something to show.
         opening = start - timedelta(hours=1)
+        opening_qty: dict[UUID, int] = {}
+        low_stock: list[bool] = []
         for i, (v, _, demand) in enumerate(variants):
             closing = (
                 rng.randint(0, v.reorder_point) if i % 4 == 0 else int(demand * rng.uniform(8, 20))
@@ -225,20 +244,8 @@ async def seed(reset: bool) -> None:
             db.add(
                 StockLevel(org_id=org.id, variant_id=v.id, location_id=store.id, on_hand=closing)
             )
-            movements.insert(
-                0,
-                StockMovement(
-                    org_id=org.id,
-                    variant_id=v.id,
-                    location_id=store.id,
-                    quantity=sold[v.id] + closing,
-                    reason=MovementReason.INITIAL,
-                    reference_type="seed",
-                    note="Opening stock",
-                    created_by=owner.id,
-                    created_at=opening,
-                ),
-            )
+            opening_qty[v.id] = sold[v.id] + closing
+            low_stock.append(i % 4 == 0)
             backroom = 0 if i % 4 == 0 else int(demand * rng.uniform(5, 15))
             if backroom:
                 db.add(
@@ -259,8 +266,111 @@ async def seed(reset: bool) -> None:
                         created_at=opening,
                     )
                 )
-        db.add_all(movements)
+        # Opening stock at the store arrived through one received purchase order per
+        # supplier, so the purchasing history and the ledger tell the same story.
+        suppliers = {
+            cat: Supplier(org_id=org.id, name=name, lead_time_days=lead, email=email)
+            for cat, (name, lead, email) in SUPPLIERS.items()
+        }
+        db.add_all(suppliers.values())
+        await db.flush()
+        po_number = 0
+
+        def purchase_order(cat: str, status: PurchaseOrderStatus, **kw: object) -> PurchaseOrder:
+            nonlocal po_number
+            po_number += 1
+            po = PurchaseOrder(
+                id=uuid4(),
+                org_id=org.id,
+                number=po_number,
+                supplier_id=suppliers[cat].id,
+                location_id=store.id,
+                status=status,
+                created_by=owner.id,
+                **kw,
+            )
+            db.add(po)
+            return po
+
+        receipts: list[StockMovement] = []
+        for cat in SUPPLIERS:
+            members = [
+                (v, label)
+                for (v, label, _), c in zip(variants, variant_cats, strict=True)
+                if c == cat
+            ]
+            po = purchase_order(
+                cat,
+                PurchaseOrderStatus.RECEIVED,
+                created_at=opening - timedelta(days=3),
+                ordered_at=opening - timedelta(days=3),
+                received_at=opening,
+                notes="Opening stock",
+            )
+            for v, label in members:
+                po.lines.append(
+                    PurchaseOrderLine(
+                        variant_id=v.id,
+                        sku=v.sku,
+                        name=label,
+                        quantity_ordered=opening_qty[v.id],
+                        quantity_received=opening_qty[v.id],
+                        unit_cost=v.cost,
+                    )
+                )
+                receipts.append(
+                    StockMovement(
+                        org_id=org.id,
+                        variant_id=v.id,
+                        location_id=store.id,
+                        quantity=opening_qty[v.id],
+                        reason=MovementReason.PURCHASE_RECEIPT,
+                        reference_type="purchase_order",
+                        reference_id=po.id,
+                        created_by=owner.id,
+                        created_at=opening,
+                    )
+                )
+
+        # A delivery currently on its way for some of the low-stock SKUs, and a draft.
+        incoming = [
+            (v, label, demand, cat)
+            for (v, label, demand), cat, low in zip(variants, variant_cats, low_stock, strict=True)
+            if low and cat in ("Dairy", "Beverages")
+        ]
+        if incoming:
+            po = purchase_order(
+                incoming[0][3],
+                PurchaseOrderStatus.ORDERED,
+                ordered_at=now - timedelta(days=1),
+                expected_at=(now + timedelta(days=2)).date(),
+            )
+            for v, label, demand, _ in incoming[:1]:
+                po.lines.append(
+                    PurchaseOrderLine(
+                        variant_id=v.id,
+                        sku=v.sku,
+                        name=label,
+                        quantity_ordered=int(demand * 10),
+                        unit_cost=v.cost,
+                    )
+                )
+        draft = purchase_order("Stationery", PurchaseOrderStatus.DRAFT, notes="Back-to-school")
+        for (v, label, _), cat in zip(variants, variant_cats, strict=True):
+            if cat == "Stationery":
+                draft.lines.append(
+                    PurchaseOrderLine(
+                        variant_id=v.id,
+                        sku=v.sku,
+                        name=label,
+                        quantity_ordered=40,
+                        unit_cost=v.cost,
+                    )
+                )
+
+        db.add_all(receipts + movements)
         org.order_seq = orders
+        org.po_seq = po_number
         await db.commit()
         print(
             f"Seeded '{org.name}': {len(variants)} SKUs, {orders} orders over {DAYS} days.\n"

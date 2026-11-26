@@ -130,3 +130,90 @@ export function formatOrderNumber(number: number): string {
 export function pluralize(count: number, singular: string, plural = `${singular}s`): string {
   return `${formatNumber(count)} ${count === 1 ? singular : plural}`
 }
+
+/** "Thursday, 26 November" for today in the given time zone. */
+export function formatLongDate(date: Date, timeZone?: string): string {
+  const options: Intl.DateTimeFormatOptions = { weekday: 'long', day: 'numeric', month: 'long' }
+  try {
+    return new Intl.DateTimeFormat(undefined, { ...options, timeZone }).format(date)
+  } catch {
+    return new Intl.DateTimeFormat(undefined, options).format(date)
+  }
+}
+
+/** Hour of day (0–23) in the given time zone, for greetings. */
+export function hourIn(date: Date, timeZone?: string): number {
+  try {
+    return Number(
+      new Intl.DateTimeFormat('en-US', { hour: 'numeric', hourCycle: 'h23', timeZone }).format(
+        date,
+      ),
+    )
+  } catch {
+    return date.getHours()
+  }
+}
+
+const relativeFormatter = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
+  ['year', 31_536_000],
+  ['month', 2_592_000],
+  ['week', 604_800],
+  ['day', 86_400],
+  ['hour', 3_600],
+  ['minute', 60],
+]
+
+/** "5 minutes ago", "yesterday". */
+export function formatRelative(iso: string, now = Date.now()): string {
+  const seconds = (new Date(iso).getTime() - now) / 1000
+  for (const [unit, size] of RELATIVE_UNITS) {
+    if (Math.abs(seconds) >= size) return relativeFormatter.format(Math.round(seconds / size), unit)
+  }
+  return 'just now'
+}
+
+/** Percent change from `previous` to `current`, or null when there is no baseline. */
+export function percentChange(current: number, previous: number): number | null {
+  if (previous === 0) return null
+  return ((current - previous) / previous) * 100
+}
+
+export function formatPercent(value: number): string {
+  return `${value > 0 ? '+' : ''}${value.toFixed(Math.abs(value) < 10 ? 1 : 0)}%`
+}
+
+/** Today's calendar date ("YYYY-MM-DD") in a time zone. */
+export function todayIn(timeZone?: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date())
+  } catch {
+    return new Intl.DateTimeFormat('en-CA').format(new Date())
+  }
+}
+
+/** Calendar arithmetic on "YYYY-MM-DD" strings (no time zone involved). */
+export function addDays(day: string, days: number): string {
+  const [y, m, d] = day.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
+}
+
+/** Whole days from `from` to `to` (both "YYYY-MM-DD"). */
+export function daysBetween(from: string, to: string): number {
+  const parse = (s: string) => {
+    const [y, m, d] = s.split('-').map(Number)
+    return Date.UTC(y, m - 1, d)
+  }
+  return Math.round((parse(to) - parse(from)) / 86_400_000)
+}
+
+/** Format a calendar date ("2026-11-26") without shifting it through a time zone. */
+export function formatCalendarDate(
+  day: string,
+  options: Intl.DateTimeFormatOptions = { dateStyle: 'medium' },
+): string {
+  const [y, m, d] = day.split('-').map(Number)
+  return new Intl.DateTimeFormat(undefined, { ...options, timeZone: 'UTC' }).format(
+    new Date(Date.UTC(y, m - 1, d)),
+  )
+}

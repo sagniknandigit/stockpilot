@@ -1,4 +1,5 @@
 import { CircleCheck, Printer, Plus } from 'lucide-react'
+import { SuccessCheck } from './SuccessCheck'
 import type { Location, Order } from '@/api/types'
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
@@ -27,7 +28,7 @@ export function ReceiptDialog({
       onClose={onNewSale}
       title={
         <span className="flex items-center gap-2">
-          <CircleCheck className="size-5 text-emerald-500" aria-hidden="true" /> Sale complete
+          <CircleCheck className="size-5 text-success" aria-hidden="true" /> Sale complete
         </span>
       }
       size="sm"
@@ -43,13 +44,24 @@ export function ReceiptDialog({
       }
     >
       {order && (
-        <Receipt
-          order={order}
-          organizationName={organizationName}
-          location={location}
-          currency={currency}
-          timeZone={timeZone}
-        />
+        <>
+          <div className="no-print mb-5 text-center">
+            <SuccessCheck />
+            <p className="mt-3 text-2xl font-semibold tracking-tight text-foreground">
+              {formatMoney(order.total, currency)}
+            </p>
+            <p className="text-[13px] text-muted">Paid · {formatOrderNumber(order.number)}</p>
+          </div>
+          <div className="rounded-xl border bg-surface p-4">
+            <Receipt
+              order={order}
+              organizationName={organizationName}
+              location={location}
+              currency={currency}
+              timeZone={timeZone}
+            />
+          </div>
+        </>
       )}
     </Dialog>
   )

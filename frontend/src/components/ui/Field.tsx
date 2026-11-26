@@ -29,7 +29,7 @@ export function Field({ label, error, hint, className, children }: FieldProps) {
         'aria-describedby': error || hint ? messageId : undefined,
       })}
       {error ? (
-        <p id={messageId} className="text-xs text-red-600 dark:text-red-400">
+        <p id={messageId} className="text-xs text-danger-ink">
           {error}
         </p>
       ) : hint ? (

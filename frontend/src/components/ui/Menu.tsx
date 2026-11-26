@@ -11,11 +11,19 @@ interface MenuProps {
   }) => ReactNode
   children: (close: () => void) => ReactNode
   align?: 'left' | 'right'
+  /** Open below (default) or above the trigger. */
+  side?: 'top' | 'bottom'
   className?: string
 }
 
 /** Minimal dropdown: closes on outside click and Esc. */
-export function Menu({ trigger, children, align = 'right', className }: MenuProps) {
+export function Menu({
+  trigger,
+  children,
+  align = 'right',
+  side = 'bottom',
+  className,
+}: MenuProps) {
   const [open, setOpen] = useState(false)
   const id = useId()
   const rootRef = useRef<HTMLDivElement>(null)
@@ -49,8 +57,9 @@ export function Menu({ trigger, children, align = 'right', className }: MenuProp
           id={id}
           role="menu"
           className={cn(
-            'absolute z-40 mt-2 min-w-56 animate-fade-in rounded-xl border bg-surface p-1 shadow-lg',
+            'absolute z-40 min-w-56 animate-fade-in rounded-xl border bg-surface-raised p-1 shadow-pop',
             align === 'right' ? 'right-0' : 'left-0',
+            side === 'top' ? 'bottom-full mb-2' : 'top-full mt-2',
             className,
           )}
         >
