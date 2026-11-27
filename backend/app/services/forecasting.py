@@ -23,7 +23,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import NotFound
 from app.models import (
     OPEN_PO_STATUSES,
-    OrderStatus,
     Organization,
     Product,
     ProductVariant,
@@ -44,6 +43,7 @@ from app.schemas.insights import (
     VariantForecastOut,
 )
 from app.services import forecast_model as fm
+from app.services.metrics import COUNTED_ORDER, NET_QUANTITY
 
 HISTORY_DAYS = 56
 HOLDOUT_DAYS = 14
@@ -81,11 +81,11 @@ async def daily_demand(
     day = cast(func.timezone(tz.key, SalesOrder.created_at), Date)
     lo, hi = local_day_bounds(start, end, tz)
     stmt = (
-        select(SalesOrderLine.variant_id, day, func.sum(SalesOrderLine.quantity))
+        select(SalesOrderLine.variant_id, day, func.sum(NET_QUANTITY))
         .join(SalesOrder, SalesOrder.id == SalesOrderLine.order_id)
         .where(
             SalesOrder.org_id == org_id,
-            SalesOrder.status == OrderStatus.COMPLETED,
+            COUNTED_ORDER,
             SalesOrder.created_at >= lo,
             SalesOrder.created_at < hi,
         )

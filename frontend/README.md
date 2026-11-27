@@ -8,8 +8,10 @@ React Router v7 · react-hook-form + zod · Recharts · motion · lucide-react
 
 **Highlights:** a fast point-of-sale (scan, tap tiles, keyboard shortcuts, idempotent checkout),
 an inventory ledger with reconciliation, purchasing (purchase orders with partial receiving), demand
-forecasts with a reorder planner, analytics, an "Ask StockPilot" AI assistant, live updates over
-WebSocket, a ⌘K command palette, and light/dark themes.
+forecasts with a reorder planner, analytics, partial refunds with PDF invoices, CSV import/export,
+notifications, API keys and signed webhooks (Settings → Integrations, owner only), an
+"Ask StockPilot" AI assistant (Google Gemini, configured on the server), live updates over WebSocket,
+a ⌘K command palette, and light/dark themes.
 
 ## Getting started
 
@@ -54,10 +56,11 @@ docker build -t stockpilot-frontend .
 docker run -p 8080:80 --network <network-with-backend> stockpilot-frontend
 ```
 
-A multi-stage build: Node builds the app, then `nginx:alpine` serves `dist/`. `nginx.conf` falls
+A multi-stage build: Node builds the app, then `nginx:alpine` serves `dist/`. `nginx.conf.template` falls
 back to `index.html` for client-side routes and proxies `/api/` (including the `/api/v1/ws`
-WebSocket upgrade) to `http://backend:8000`, so the backend container must be reachable as
-`backend` (e.g. a docker-compose service name).
+WebSocket upgrade) to `http://${API_HOSTPORT}`. The nginx image renders the template with
+`envsubst` at startup; the Dockerfile defaults `API_HOSTPORT=backend:8000` (a docker-compose service
+name), so override it with `-e API_HOSTPORT=host:port` to point elsewhere.
 
 ## Project structure
 

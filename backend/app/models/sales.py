@@ -23,6 +23,7 @@ from app.models.tenancy import str_enum
 
 class OrderStatus(StrEnum):
     COMPLETED = "completed"
+    PARTIALLY_REFUNDED = "partially_refunded"
     REFUNDED = "refunded"
 
 
@@ -50,6 +51,10 @@ class SalesOrder(UUIDPrimaryKey, Timestamped, TenantScoped, Base):
         ForeignKey("users.id", ondelete="SET NULL")
     )
     refunded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Money returned so far; net revenue = total - refunded_amount.
+    refunded_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), default=Decimal("0"), server_default="0"
+    )
 
     location: Mapped[Location] = relationship(lazy="joined", innerjoin=True)
     lines: Mapped[list["SalesOrderLine"]] = relationship(
@@ -63,7 +68,13 @@ class SalesOrder(UUIDPrimaryKey, Timestamped, TenantScoped, Base):
 
 class SalesOrderLine(UUIDPrimaryKey, Base):
     __tablename__ = "sales_order_lines"
-    __table_args__ = (CheckConstraint("quantity > 0", name="quantity_positive"),)
+    __table_args__ = (
+        CheckConstraint("quantity > 0", name="quantity_positive"),
+        CheckConstraint(
+            "refunded_quantity >= 0 AND refunded_quantity <= quantity",
+            name="refunded_within_quantity",
+        ),
+    )
 
     order_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("sales_orders.id", ondelete="CASCADE"), index=True
@@ -78,3 +89,4 @@ class SalesOrderLine(UUIDPrimaryKey, Base):
     unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     unit_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     line_total: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    refunded_quantity: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

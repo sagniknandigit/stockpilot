@@ -70,6 +70,7 @@ export function OrdersPage() {
             >
               <option value="">All statuses</option>
               <option value="completed">Completed</option>
+              <option value="partially_refunded">Partially refunded</option>
               <option value="refunded">Refunded</option>
             </Select>
           </label>
@@ -170,6 +171,11 @@ export function OrdersPage() {
                       </TD>
                       <TD className="text-right font-medium whitespace-nowrap tabular-nums">
                         {formatMoney(order.total, organization.currency)}
+                        {order.status === 'partially_refunded' && (
+                          <p className="text-xs font-normal text-muted">
+                            −{formatMoney(order.refunded_amount, organization.currency)} refunded
+                          </p>
+                        )}
                       </TD>
                       <TD>
                         <OrderStatusBadge status={order.status} />

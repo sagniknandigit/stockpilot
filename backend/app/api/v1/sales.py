@@ -7,8 +7,9 @@ from fastapi import APIRouter, Header, Response
 from app.core.deps import CurrentUser, DbSession, ManagerUser, Pagination
 from app.models import OrderStatus, SalesOrder
 from app.schemas.common import Page, paginate
-from app.schemas.sales import OrderIn, OrderOut
+from app.schemas.sales import OrderIn, OrderOut, RefundIn
 from app.services import sales as service
+from app.services.invoice import render_invoice
 
 router = APIRouter(prefix="/sales", tags=["sales"])
 
@@ -63,5 +64,19 @@ async def get_order(order_id: UUID, user: CurrentUser, db: DbSession) -> SalesOr
 
 
 @router.post("/orders/{order_id}/refund", response_model=OrderOut)
-async def refund_order(order_id: UUID, user: ManagerUser, db: DbSession) -> SalesOrder:
-    return await service.refund_order(db, user, order_id)
+async def refund_order(
+    order_id: UUID, user: ManagerUser, db: DbSession, data: RefundIn | None = None
+) -> SalesOrder:
+    """Refund all remaining items (no body) or specific quantities per line."""
+    return await service.refund_order(db, user, order_id, data)
+
+
+@router.get("/orders/{order_id}/invoice.pdf", response_class=Response)
+async def invoice_pdf(order_id: UUID, user: CurrentUser, db: DbSession) -> Response:
+    """Printable PDF invoice (shows refunds and the net amount paid)."""
+    filename, content = await render_invoice(db, user.org_id, order_id)
+    return Response(
+        content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )

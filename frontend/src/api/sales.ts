@@ -1,5 +1,5 @@
-import { api, apiRequest } from './client'
-import type { Order, OrderInput, OrderListParams, Page, UUID } from './types'
+import { api, apiDownload, apiRequest } from './client'
+import type { Order, OrderInput, OrderListParams, Page, RefundInput, UUID } from './types'
 
 export interface CreateOrderResult {
   order: Order
@@ -25,5 +25,8 @@ export const salesApi = {
   },
   listOrders: (params: OrderListParams) => api.get<Page<Order>>('/sales/orders', params),
   getOrder: (id: UUID) => api.get<Order>(`/sales/orders/${id}`),
-  refundOrder: (id: UUID) => api.post<Order>(`/sales/orders/${id}/refund`),
+  /** Without `input.lines`, refunds everything not yet refunded. */
+  refundOrder: (id: UUID, input?: RefundInput) =>
+    api.post<Order>(`/sales/orders/${id}/refund`, input),
+  invoice: (id: UUID) => apiDownload(`/sales/orders/${id}/invoice.pdf`),
 }

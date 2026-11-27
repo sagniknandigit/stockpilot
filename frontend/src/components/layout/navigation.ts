@@ -4,6 +4,7 @@ import {
   Package,
   ReceiptText,
   ScanBarcode,
+  Settings,
   Truck,
   Users,
   Warehouse,
@@ -55,7 +56,10 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: 'Admin',
-    items: [{ to: '/team', label: 'Team', icon: Users, minimumRole: 'manager' }],
+    items: [
+      { to: '/team', label: 'Team', icon: Users, minimumRole: 'manager' },
+      { to: '/settings', label: 'Settings', icon: Settings, minimumRole: 'owner' },
+    ],
   },
 ]
 

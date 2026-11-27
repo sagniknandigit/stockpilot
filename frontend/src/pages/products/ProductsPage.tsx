@@ -1,4 +1,4 @@
-import { Package, Plus, Search } from 'lucide-react'
+import { Package, Plus, Search, Upload } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { useCan, useSession } from '@/auth/AuthContext'
@@ -16,6 +16,8 @@ import { Table, TableSkeleton, TBody, TD, TH, THead, TR } from '@/components/ui/
 import { useCategories, useProducts } from '@/hooks/useCatalog'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { getErrorMessage } from '@/lib/errors'
+import { ExportButton } from './ExportButton'
+import { ImportProductsDialog } from './ImportProductsDialog'
 import { NewProductDialog } from './NewProductDialog'
 import { priceRange } from './productUtils'
 
@@ -42,6 +44,7 @@ export function ProductsPage() {
       },
       { replace: true },
     )
+  const [importing, setImporting] = useState(false)
   const q = useDebouncedValue(search.trim())
 
   const categories = useCategories()
@@ -60,11 +63,19 @@ export function ProductsPage() {
         title="Products"
         description="Your catalog: products, their variants and prices."
         actions={
-          canManage && (
-            <Button onClick={() => setCreating(true)}>
-              <Plus /> New product
-            </Button>
-          )
+          <>
+            <ExportButton />
+            {canManage && (
+              <Button variant="secondary" onClick={() => setImporting(true)}>
+                <Upload /> Import CSV
+              </Button>
+            )}
+            {canManage && (
+              <Button onClick={() => setCreating(true)}>
+                <Plus /> New product
+              </Button>
+            )}
+          </>
         }
       />
 
@@ -203,6 +214,7 @@ export function ProductsPage() {
       </Card>
 
       <NewProductDialog open={creating} onClose={() => setCreating(false)} />
+      <ImportProductsDialog open={importing} onClose={() => setImporting(false)} />
     </>
   )
 }

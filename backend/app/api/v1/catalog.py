@@ -1,7 +1,8 @@
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, File, Query, UploadFile
+from fastapi.responses import StreamingResponse
 
 from app.core.deps import CurrentUser, DbSession, ManagerUser, Pagination
 from app.models import Category, Product, ProductVariant
@@ -18,6 +19,7 @@ from app.schemas.catalog import (
 )
 from app.schemas.common import Page, paginate
 from app.services import catalog as service
+from app.services import csv_io
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
 
@@ -35,6 +37,33 @@ async def create_category(data: CategoryIn, user: ManagerUser, db: DbSession) ->
 @router.delete("/categories/{category_id}", status_code=204)
 async def delete_category(category_id: UUID, user: ManagerUser, db: DbSession) -> None:
     await service.delete_category(db, user.org_id, category_id)
+
+
+@router.get("/products/export.csv", response_class=StreamingResponse)
+async def export_products(user: CurrentUser, db: DbSession) -> StreamingResponse:
+    """All SKUs as CSV (same columns the importer accepts, plus current on-hand)."""
+    rows = await csv_io.export_rows(db, user.org_id)
+    return StreamingResponse(
+        rows,
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="stockpilot-products.csv"'},
+    )
+
+
+@router.post("/products/import", response_model=csv_io.ImportReport)
+async def import_products(
+    user: ManagerUser,
+    db: DbSession,
+    file: Annotated[UploadFile, File(description="CSV with sku, product_name, price, ...")],
+    dry_run: bool = False,
+) -> csv_io.ImportReport:
+    """Create or update products from a CSV, keyed on SKU. All-or-nothing.
+
+    Columns: sku*, product_name*, price*, variant_name, category, barcode, cost,
+    reorder_point (* required). Stock levels are not imported: use adjustments so every
+    change goes through the ledger.
+    """
+    return await csv_io.import_products(db, user.org_id, await file.read(), dry_run=dry_run)
 
 
 @router.get("/products", response_model=Page[ProductOut])

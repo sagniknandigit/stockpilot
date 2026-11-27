@@ -81,6 +81,25 @@ export const router = createBrowserRouter([
             ),
           },
           {
+            element: <ProtectedRoute minimumRole="owner" />,
+            children: [
+              {
+                path: 'settings',
+                element: lazyPage(
+                  () => import('@/pages/settings/IntegrationsPage'),
+                  'IntegrationsPage',
+                ),
+              },
+              {
+                path: 'settings/webhooks/:webhookId',
+                element: lazyPage(
+                  () => import('@/pages/settings/WebhookDetailPage'),
+                  'WebhookDetailPage',
+                ),
+              },
+            ],
+          },
+          {
             element: <ProtectedRoute minimumRole="manager" />,
             children: [
               {

@@ -75,7 +75,9 @@ function Conversation({
     onError: (error, { id }) =>
       setMessages((all) => all.map((m) => (m.id === id ? { ...m, error } : m))),
   })
-  const notConfigured = messages.some((m) => isApiError(m.error, 'assistant_unavailable'))
+  const notConfigured = messages.some(
+    (m) => isApiError(m.error, 'assistant_unavailable') && /not configured/i.test(m.error.message),
+  )
 
   function send(text: string) {
     const question = text.trim()
@@ -223,7 +225,8 @@ function Conversation({
 }
 
 function AnswerError({ error }: { error: unknown }) {
-  if (isApiError(error, 'assistant_unavailable')) {
+  // 503 also covers a busy/unreachable model; only show setup help when it's unconfigured.
+  if (isApiError(error, 'assistant_unavailable') && /not configured/i.test(error.message)) {
     return (
       <div className="flex gap-3 py-1">
         <KeyRound className="mt-0.5 size-4 shrink-0 text-warning-ink" aria-hidden="true" />
@@ -232,7 +235,7 @@ function AnswerError({ error }: { error: unknown }) {
           <p className="mt-0.5 text-muted">
             Set{' '}
             <code className="rounded bg-subtle px-1 py-0.5 font-mono text-[12px]">
-              ANTHROPIC_API_KEY
+              GEMINI_API_KEY
             </code>{' '}
             on the server to enable answers. Everything else in StockPilot works without it.
           </p>

@@ -1,6 +1,14 @@
 from app.models.base import Base
 from app.models.catalog import Category, Product, ProductVariant
 from app.models.inventory import Location, MovementReason, StockLevel, StockMovement
+from app.models.platform import (
+    ApiKey,
+    DeliveryStatus,
+    Notification,
+    OutboxEvent,
+    WebhookDelivery,
+    WebhookEndpoint,
+)
 from app.models.procurement import (
     OPEN_PO_STATUSES,
     PurchaseOrder,
@@ -13,12 +21,16 @@ from app.models.tenancy import Organization, Role, User
 
 __all__ = [
     "OPEN_PO_STATUSES",
+    "ApiKey",
     "Base",
     "Category",
+    "DeliveryStatus",
     "Location",
     "MovementReason",
+    "Notification",
     "OrderStatus",
     "Organization",
+    "OutboxEvent",
     "Product",
     "ProductVariant",
     "PurchaseOrder",
@@ -31,4 +43,6 @@ __all__ = [
     "StockMovement",
     "Supplier",
     "User",
+    "WebhookDelivery",
+    "WebhookEndpoint",
 ]

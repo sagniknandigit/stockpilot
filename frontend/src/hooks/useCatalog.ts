@@ -78,6 +78,17 @@ export function useUpdateProduct(id: UUID) {
   })
 }
 
+/** CSV import: call with dryRun first to preview, then again to apply. */
+export function useImportProducts() {
+  const invalidate = useInvalidateCatalog()
+  return useMutation({
+    mutationFn: ({ file, dryRun }: { file: File; dryRun: boolean }) =>
+      catalogApi.importProducts(file, dryRun),
+    onSuccess: (report) => (report.applied ? invalidate() : undefined),
+    meta: { silentError: true }, // shown inside the dialog
+  })
+}
+
 export function useAddVariant(productId: UUID) {
   const invalidate = useInvalidateCatalog()
   return useMutation({

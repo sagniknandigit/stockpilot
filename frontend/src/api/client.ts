@@ -119,12 +119,15 @@ export function refreshAccessToken(): Promise<string | null> {
 
 // --- Core request ------------------------------------------------------------------------------
 
-export async function apiRequest<T>(
-  path: string,
-  options: RequestOptions = {},
-): Promise<ApiResponse<T>> {
+/**
+ * Fetch with the bearer token, refreshing it once on `token_expired`. Returns the raw Response
+ * (already checked for errors) so callers can read JSON, blobs or headers.
+ */
+async function authorizedFetch(path: string, options: RequestOptions = {}): Promise<Response> {
   const { method = 'GET', body, query, headers = {}, signal, auth = true } = options
   const url = buildUrl(path, query)
+  // FormData (file uploads) sets its own multipart Content-Type; everything else is JSON.
+  const isForm = body instanceof FormData
 
   const doFetch = (accessToken: string | undefined) =>
     send(url, {
@@ -132,11 +135,11 @@ export async function apiRequest<T>(
       signal,
       headers: {
         Accept: 'application/json',
-        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(body !== undefined && !isForm ? { 'Content-Type': 'application/json' } : {}),
         ...(auth && accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         ...headers,
       },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
     })
 
   let response = await doFetch(tokenStore.get()?.accessToken)
@@ -154,9 +157,30 @@ export async function apiRequest<T>(
   }
 
   if (!response.ok) throw await parseError(response)
+  return response
+}
 
+export async function apiRequest<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<ApiResponse<T>> {
+  const response = await authorizedFetch(path, options)
   const data = (response.status === 204 ? undefined : await response.json()) as T
   return { data, status: response.status, headers: response.headers }
+}
+
+export interface DownloadedFile {
+  blob: Blob
+  /** From Content-Disposition when the server sends one. */
+  filename: string | null
+}
+
+/** Authenticated binary download (CSV export, PDF invoice). */
+export async function apiDownload(path: string): Promise<DownloadedFile> {
+  const response = await authorizedFetch(path, { headers: { Accept: '*/*' } })
+  const disposition = response.headers.get('Content-Disposition') ?? ''
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)
+  return { blob: await response.blob(), filename: match ? decodeURIComponent(match[1]) : null }
 }
 
 /** Thin verb helpers that return just the parsed body. */
@@ -167,5 +191,5 @@ export const api = {
     apiRequest<T>(path, { ...options, method: 'POST', body }).then((r) => r.data),
   patch: <T>(path: string, body: unknown) =>
     apiRequest<T>(path, { method: 'PATCH', body }).then((r) => r.data),
-  delete: (path: string) => apiRequest<void>(path, { method: 'DELETE' }).then(() => undefined),
+  delete: <T = void>(path: string) => apiRequest<T>(path, { method: 'DELETE' }).then((r) => r.data),
 }

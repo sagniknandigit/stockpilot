@@ -3,7 +3,11 @@ import os
 # Configure before any app import: tests run against a dedicated database.
 os.environ["ENVIRONMENT"] = "test"
 os.environ["BCRYPT_ROUNDS"] = "4"
-os.environ["ANTHROPIC_API_KEY"] = ""  # never call the real API from tests
+os.environ["GEMINI_API_KEY"] = ""  # never call a real LLM API from tests
+# In-process events/limits by default; Redis-specific tests opt in via TEST_REDIS_URL.
+os.environ["REDIS_URL"] = ""
+os.environ["WEBHOOKS_ALLOW_INSECURE_URLS"] = "false"
+os.environ["SMTP_HOST"] = ""
 os.environ["DATABASE_URL"] = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/stockpilot_test"
 )

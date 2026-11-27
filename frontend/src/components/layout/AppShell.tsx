@@ -12,6 +12,7 @@ import { AssistantProvider } from '../assistant/AssistantProvider'
 import { CommandPaletteProvider } from '../command/CommandPalette'
 import { Breadcrumbs } from './Breadcrumbs'
 import { LocationSwitcher } from './LocationSwitcher'
+import { NotificationBell } from './NotificationBell'
 import { SearchTrigger } from './SearchTrigger'
 import { Sidebar } from './Sidebar'
 import { ThemeToggle } from './ThemeToggle'
@@ -108,6 +109,7 @@ export function AppShell() {
                   <LiveIndicator />
                   <SearchTrigger />
                   <AssistantButton />
+                  <NotificationBell />
                   <LocationSwitcher />
                   <ThemeToggle />
                 </div>

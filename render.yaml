@@ -1,0 +1,93 @@
+# Render Blueprint: one-click deploy of the whole stack.
+#   Dashboard → New → Blueprint → select this repo. Then set GEMINI_API_KEY (optional)
+#   and SMTP_* (optional) on the "stockpilot-shared" environment group.
+#
+# Topology: web (nginx + SPA) → api (FastAPI) → Postgres; worker + beat (Celery) ↔ Redis.
+
+envVarGroups:
+  - name: stockpilot-shared
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_JSON
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+
+databases:
+  - name: stockpilot-db
+    databaseName: stockpilot
+    plan: basic-256mb
+
+services:
+  - type: keyvalue
+    name: stockpilot-redis
+    plan: starter
+    ipAllowList: []  # private network only
+
+  - type: web
+    name: stockpilot-api
+    runtime: docker
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    healthCheckPath: /health
+    plan: starter
+    envVars:
+      - fromGroup: stockpilot-shared
+      - key: DATABASE_URL
+        fromDatabase: { name: stockpilot-db, property: connectionString }
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: stockpilot-redis, property: connectionString }
+      - key: CORS_ORIGINS
+        value: '["https://stockpilot-web.onrender.com"]'
+      - key: APP_URL
+        value: https://stockpilot-web.onrender.com
+
+  - type: worker
+    name: stockpilot-worker
+    runtime: docker
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    dockerCommand: celery -A app.worker worker --loglevel=info --concurrency=2
+    plan: starter
+    envVars:
+      - fromGroup: stockpilot-shared
+      - key: DATABASE_URL
+        fromDatabase: { name: stockpilot-db, property: connectionString }
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: stockpilot-redis, property: connectionString }
+      - key: APP_URL
+        value: https://stockpilot-web.onrender.com
+
+  - type: worker
+    name: stockpilot-beat
+    runtime: docker
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    dockerCommand: celery -A app.worker beat --loglevel=info --schedule /tmp/celerybeat-schedule
+    plan: starter
+    envVars:
+      - fromGroup: stockpilot-shared
+      - key: DATABASE_URL
+        fromDatabase: { name: stockpilot-db, property: connectionString }
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: stockpilot-redis, property: connectionString }
+
+  - type: web
+    name: stockpilot-web
+    runtime: docker
+    dockerContext: ./frontend
+    dockerfilePath: ./frontend/Dockerfile
+    plan: starter
+    envVars:
+      # nginx proxies /api (incl. the WebSocket) to the API over Render's private network.
+      - key: API_HOSTPORT
+        fromService: { type: web, name: stockpilot-api, property: hostport }

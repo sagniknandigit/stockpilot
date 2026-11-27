@@ -3,23 +3,35 @@ from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import Depends, Query
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.exceptions import Forbidden, Unauthorized
+from app.core.limiter import SlidingWindowLimiter
 from app.core.security import decode_token, subject_id
 from app.models import Role, User
 
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 bearer_scheme = HTTPBearer(auto_error=False, description="Paste the access token from /auth/login")
+api_key_scheme = APIKeyHeader(
+    name="X-API-Key", auto_error=False, description="An API key from Settings → API keys"
+)
+api_key_limiter = SlidingWindowLimiter("api-key", limit=120, window_seconds=60)
 
 
 async def get_current_user(
     db: DbSession,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+    api_key: Annotated[str | None, Depends(api_key_scheme)],
 ) -> User:
+    if api_key:
+        from app.services.api_keys import authenticate  # avoid an import cycle
+
+        key_user, key = await authenticate(db, api_key)
+        await api_key_limiter.check(str(key.id))
+        return key_user
     if credentials is None:
         raise Unauthorized("Not authenticated")
     payload = decode_token(credentials.credentials, "access")

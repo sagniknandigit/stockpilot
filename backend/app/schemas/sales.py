@@ -39,6 +39,7 @@ class OrderLineOut(ORMModel):
     quantity: int
     unit_price: Decimal
     line_total: Decimal
+    refunded_quantity: int
 
 
 class OrderOut(ORMModel):
@@ -54,4 +55,17 @@ class OrderOut(ORMModel):
     created_by: UUID | None
     created_at: datetime
     refunded_at: datetime | None
+    refunded_amount: Decimal
     lines: list[OrderLineOut]
+
+
+class RefundLineIn(BaseModel):
+    line_id: UUID
+    quantity: Annotated[int, Field(gt=0, le=10_000)]
+
+
+class RefundIn(BaseModel):
+    """Omit `lines` to refund everything that hasn't been refunded yet."""
+
+    lines: Annotated[list[RefundLineIn] | None, Field(min_length=1, max_length=200)] = None
+    reason: Annotated[str | None, Field(max_length=200)] = None

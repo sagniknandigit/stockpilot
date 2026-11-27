@@ -43,6 +43,9 @@ from app.models import (
 DEMO_EMAIL = "demo@stockpilot.app"
 DEMO_PASSWORD = "demo-password"
 
+# Bought far too much of these: ~4 months of stock, so analytics flags them as slow movers.
+OVERSTOCKED = {"SNK-TM-200", "ST-NB-D", "HH-TB-30"}
+
 # category -> (supplier, lead time in days, email)
 SUPPLIERS = {
     "Beverages": ("Himalayan Beverages Pvt Ltd", 4, "orders@himalayan-bev.example"),
@@ -121,6 +124,10 @@ async def _reset(db: AsyncSession) -> None:
     await db.execute(
         text("ALTER TABLE stock_movements DISABLE TRIGGER stock_movements_append_only")
     )
+    # Documents reference products/locations with ON DELETE RESTRICT (history must not
+    # vanish silently), so remove them explicitly before cascading the organization.
+    await db.execute(delete(PurchaseOrder).where(PurchaseOrder.org_id == org_id))
+    await db.execute(delete(SalesOrder).where(SalesOrder.org_id == org_id))
     await db.execute(delete(Organization).where(Organization.id == org_id))
     await db.execute(text("ALTER TABLE stock_movements ENABLE TRIGGER stock_movements_append_only"))
     await db.commit()
@@ -247,6 +254,8 @@ async def seed(reset: bool) -> None:
             opening_qty[v.id] = sold[v.id] + closing
             low_stock.append(i % 4 == 0)
             backroom = 0 if i % 4 == 0 else int(demand * rng.uniform(5, 15))
+            if v.sku in OVERSTOCKED:  # over-ordered lines: genuine slow movers for the demo
+                backroom = int(demand * 120)
             if backroom:
                 db.add(
                     StockLevel(

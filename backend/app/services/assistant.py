@@ -1,6 +1,7 @@
-"""Ask StockPilot: natural-language questions answered with Claude tool use.
+"""Ask StockPilot: natural-language questions answered with LLM tool use.
 
-Safety model: Claude never writes SQL. It can only call the fixed, read-only tools below,
+Powered by Google Gemini function calling.
+Safety model: the model never writes SQL. It can only call the fixed, read-only tools below,
 each of which wraps an existing service function with validated parameters and is scoped
 to the caller's organization by the server, never by anything the model supplies.
 """
@@ -13,7 +14,9 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-import anthropic
+from google import genai
+from google.genai import errors as genai_errors
+from google.genai import types as genai_types
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -337,7 +340,7 @@ async def run_tool(db: AsyncSession, user: User, name: str, raw: Any) -> tuple[s
         return f"Error: {exc.message}", True
 
 
-# --- The tool-use loop -------------------------------------------------------------------
+# --- Gemini function-calling loop --------------------------------------------------------
 
 
 class AssistantUnavailable(AppError):
@@ -345,115 +348,146 @@ class AssistantUnavailable(AppError):
     code = "assistant_unavailable"
 
 
-_client: anthropic.AsyncAnthropic | None = None
+_client: genai.Client | None = None
 
 
-def get_client() -> anthropic.AsyncAnthropic:
+def get_client() -> genai.Client:
     global _client
+    if not settings.gemini_api_key:
+        raise AssistantUnavailable(
+            "The AI assistant is not configured. Set GEMINI_API_KEY on the server."
+        )
     if _client is None:
-        if not settings.anthropic_api_key:
-            raise AssistantUnavailable(
-                "The AI assistant is not configured. Set ANTHROPIC_API_KEY on the server."
-            )
-        _client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        _client = genai.Client(
+            api_key=settings.gemini_api_key,
+            http_options=genai_types.HttpOptions(
+                timeout=settings.gemini_timeout_seconds * 1000,
+                # Retries 429/5xx (e.g. "model overloaded") with exponential backoff.
+                retry_options=genai_types.HttpRetryOptions(
+                    attempts=3, initial_delay=1.0, max_delay=8.0
+                ),
+            ),
+        )
     return _client
 
 
-async def ask(
-    db: AsyncSession,
-    user: User,
-    question: str,
-    client: anthropic.AsyncAnthropic | None = None,
-) -> AskOut:
-    client = client or get_client()
-    org_id = user.org_id
-    tz = await org_timezone(db, org_id)
-    org = await db.get(Organization, org_id)
-    context = (
+def gemini_config() -> genai_types.GenerateContentConfig:
+    return genai_types.GenerateContentConfig(
+        system_instruction=SYSTEM_PROMPT,
+        tools=[
+            genai_types.Tool(
+                function_declarations=[
+                    genai_types.FunctionDeclaration(
+                        name=tool["name"],
+                        description=tool["description"],
+                        parameters_json_schema=tool["input_schema"],
+                    )
+                    for tool in TOOLS
+                ]
+            )
+        ],
+        # We run the loop ourselves so every call is validated, scoped and traced.
+        automatic_function_calling=genai_types.AutomaticFunctionCallingConfig(disable=True),
+        temperature=0.2,
+    )
+
+
+async def _context(db: AsyncSession, user: User) -> str:
+    tz = await org_timezone(db, user.org_id)
+    org = await db.get(Organization, user.org_id)
+    return (
         f"Today is {datetime.now(tz):%A %Y-%m-%d} (store timezone {tz.key}). "
         f"Store: {org.name if org else 'unknown'}, currency {org.currency if org else 'INR'}. "
         f"The user is a {user.role.value}."
     )
-    messages: list[dict[str, Any]] = [
-        {"role": "user", "content": f"{context}\n\nQuestion: {question}"}
+
+
+_BLOCKED = {
+    genai_types.FinishReason.SAFETY,
+    genai_types.FinishReason.PROHIBITED_CONTENT,
+    genai_types.FinishReason.BLOCKLIST,
+}
+
+
+async def ask(
+    db: AsyncSession, user: User, question: str, client: genai.Client | None = None
+) -> AskOut:
+    client = client or get_client()
+    model = settings.gemini_model
+    config = gemini_config()
+    # Volatile context (today's date) goes in the user turn so the system instruction and
+    # tool declarations stay an identical prefix across requests (implicit caching).
+    prompt = f"{await _context(db, user)}\n\nQuestion: {question}"
+    contents: list[genai_types.Content] = [
+        genai_types.Content(role="user", parts=[genai_types.Part.from_text(text=prompt)])
     ]
     traces: list[ToolCallTrace] = []
-    usage = {"input_tokens": 0, "output_tokens": 0, "cache_read_input_tokens": 0}
+    usage = {"input_tokens": 0, "output_tokens": 0, "cached_input_tokens": 0}
 
     for _ in range(MAX_TOOL_ROUNDS + 1):
         try:
-            # Plain dicts + echoed response blocks; the SDK validates at runtime.
-            response = await client.beta.messages.create(  # type: ignore[call-overload]
-                model=settings.assistant_model,
-                max_tokens=16000,
-                # Tools and system prompt are static, so this breakpoint caches both.
-                system=[
-                    {
-                        "type": "text",
-                        "text": SYSTEM_PROMPT,
-                        "cache_control": {"type": "ephemeral"},
-                    }
-                ],
-                tools=TOOLS,
-                messages=messages,
-                output_config={"effort": "medium"},
-                # If the primary model declines, retry server-side on a fallback model.
-                betas=["server-side-fallback-2026-07-01"],
-                fallbacks="default",
+            response = await client.aio.models.generate_content(
+                model=model, contents=contents, config=config
             )
-        except anthropic.RateLimitError as exc:
-            raise AssistantUnavailable("The AI assistant is busy. Try again shortly.") from exc
-        except anthropic.APIStatusError as exc:
-            logger.warning("assistant API error %s: %s", exc.status_code, exc.message)
+        except genai_errors.APIError as exc:
+            logger.warning("gemini API error %s: %s", exc.code, exc.message)
+            if exc.code in (429, 503):
+                raise AssistantUnavailable(
+                    "The AI assistant is busy right now. Please try again in a moment."
+                ) from exc
             raise AssistantUnavailable("The AI assistant is unavailable right now.") from exc
-        except anthropic.APIConnectionError as exc:
+        except (TimeoutError, OSError) as exc:
+            logger.warning("gemini transport error: %r", exc)
             raise AssistantUnavailable("Could not reach the AI assistant.") from exc
 
-        for key in usage:
-            usage[key] += getattr(response.usage, key, 0) or 0
+        meta = response.usage_metadata
+        if meta is not None:
+            usage["input_tokens"] += meta.prompt_token_count or 0
+            usage["output_tokens"] += meta.candidates_token_count or 0
+            usage["cached_input_tokens"] += meta.cached_content_token_count or 0
 
-        if response.stop_reason == "refusal":
-            return AskOut(
-                answer="I can't help with that request. Try asking about sales, stock or orders.",
-                tool_calls=traces,
-                model=response.model,
-                usage=usage,
-            )
-        if response.stop_reason == "pause_turn":
-            messages.append({"role": "assistant", "content": response.content})
-            continue
-        if response.stop_reason != "tool_use":
-            answer = "\n".join(b.text for b in response.content if b.type == "text").strip()
-            if response.stop_reason == "max_tokens":
-                answer += "\n\n_(answer truncated)_"
+        candidate = response.candidates[0] if response.candidates else None
+        calls = response.function_calls or []
+        if not calls:
+            finish = candidate.finish_reason if candidate else None
+            if finish in _BLOCKED or (response.prompt_feedback and not candidate):
+                answer = "I can't help with that request. Try asking about sales, stock or orders."
+            else:
+                parts = candidate.content.parts if candidate and candidate.content else None
+                answer = "".join(p.text for p in parts or [] if p.text and not p.thought).strip()
+                if finish == genai_types.FinishReason.MAX_TOKENS:
+                    answer += "\n\n_(answer truncated)_"
             return AskOut(
                 answer=answer or "I couldn't find an answer to that.",
                 tool_calls=traces,
-                model=response.model,
+                model=model,
                 usage=usage,
             )
 
-        messages.append({"role": "assistant", "content": response.content})
-        results = []
-        for block in response.content:
-            if block.type != "tool_use":
-                continue
-            text, is_error = await run_tool(db, user, block.name, block.input)
-            traces.append(ToolCallTrace(name=block.name, input=block.input, is_error=is_error))
-            results.append(
-                {
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": text,
-                    "is_error": is_error,
-                }
+        assert candidate is not None and candidate.content is not None
+        # Echo the model turn unchanged (it may carry thought signatures Gemini needs).
+        contents.append(candidate.content)
+        result_parts = []
+        for call in calls:
+            name = call.name or ""
+            args = dict(call.args or {})
+            text, is_error = await run_tool(db, user, name, args)
+            traces.append(ToolCallTrace(name=name, input=args, is_error=is_error))
+            result_parts.append(
+                genai_types.Part(
+                    function_response=genai_types.FunctionResponse(
+                        id=call.id,
+                        name=name,
+                        response={"error": text} if is_error else {"result": text},
+                    )
+                )
             )
-        # All results for one turn go back in a single user message.
-        messages.append({"role": "user", "content": results})
+        # All results for one turn go back together.
+        contents.append(genai_types.Content(role="user", parts=result_parts))
 
     return AskOut(
         answer="That question needed more lookups than I'm allowed. Try narrowing it down.",
         tool_calls=traces,
-        model=settings.assistant_model,
+        model=model,
         usage=usage,
     )

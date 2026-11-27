@@ -10,6 +10,24 @@ export function AccuracyCard({ accuracy }: { accuracy: ForecastAccuracy }) {
   const max = Math.max(model, baseline, 0.01)
   const better = accuracy.improvement_pct !== null && accuracy.improvement_pct > 0
 
+  if (accuracy.model_wape === null || accuracy.baseline_wape === null) {
+    return (
+      <Card className="h-full p-5">
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-[13px] font-medium text-muted">Forecast accuracy</p>
+          <span className="grid size-8 place-items-center rounded-lg bg-accent-soft text-accent-soft-foreground">
+            <Target className="size-4" aria-hidden="true" />
+          </span>
+        </div>
+        <p className="mt-2 font-medium text-foreground">Not enough history yet</p>
+        <p className="mt-1 text-xs text-muted">
+          After a few weeks of sales, StockPilot backtests its forecasts against the last{' '}
+          {accuracy.holdout_days} days and shows how accurate they are here.
+        </p>
+      </Card>
+    )
+  }
+
   return (
     <Card className="p-5">
       <div className="flex items-start justify-between gap-3">

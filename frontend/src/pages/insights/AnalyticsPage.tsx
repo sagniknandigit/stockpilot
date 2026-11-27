@@ -3,6 +3,7 @@ import {
   Boxes,
   CircleDollarSign,
   Gauge,
+  PartyPopper,
   Percent,
   ShoppingBag,
   Snail,
@@ -320,13 +321,14 @@ function AnalyticsBody({
           <CardHeader
             icon={<Snail />}
             title="Slow movers"
-            description="Stock that is tying up cash"
+            description="More than 45 days of stock at this period’s sales pace"
           />
           {data.slow_movers.length === 0 ? (
             <EmptyState
               compact
+              icon={PartyPopper}
               title="No slow movers"
-              description="Everything is selling steadily."
+              description="Everything sells through within about six weeks — your stock is working hard."
             />
           ) : (
             <Table>
@@ -336,6 +338,7 @@ function AnalyticsBody({
                   <TH className="text-right">On hand</TH>
                   <TH className="text-right">Stock value</TH>
                   <TH className="text-right">Sold</TH>
+                  <TH className="text-right">Cover</TH>
                   <TH>Last sale</TH>
                 </TR>
               </THead>
@@ -349,6 +352,11 @@ function AnalyticsBody({
                     <TD className="text-right">{formatNumber(s.on_hand)}</TD>
                     <TD className="text-right whitespace-nowrap">{money(s.stock_value)}</TD>
                     <TD className="text-right">{formatNumber(s.units_sold)}</TD>
+                    <TD className="text-right font-medium whitespace-nowrap text-warning-ink">
+                      {s.days_of_cover === null
+                        ? 'No sales'
+                        : `~${Math.round(s.days_of_cover)} days`}
+                    </TD>
                     <TD className="whitespace-nowrap text-muted">
                       {s.last_sold_at ? formatRelative(s.last_sold_at) : 'Never'}
                     </TD>

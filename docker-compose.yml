@@ -1,5 +1,19 @@
 name: stockpilot
 
+# Shared settings for the API, the Celery worker and the scheduler (one image, three roles).
+x-backend-env: &backend-env
+  ENVIRONMENT: local
+  DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/stockpilot
+  REDIS_URL: redis://redis:6379/0
+  JWT_SECRET: ${JWT_SECRET:-local-docker-secret-change-me-0123456789abcdef}
+  CORS_ORIGINS: '["http://localhost:8080","http://localhost:5173"]'
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}  # optional: enables Ask StockPilot
+  # Emails go to Mailpit (inbox UI at http://localhost:8025)
+  SMTP_HOST: mailpit
+  SMTP_PORT: "1025"
+  SMTP_USE_TLS: "false"
+  APP_URL: http://localhost:8080
+
 services:
   db:
     image: postgres:16-alpine
@@ -27,14 +41,18 @@ services:
       timeout: 3s
       retries: 10
 
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports:
+      - "8025:8025"  # web inbox for alert and digest emails
+
   backend:
     build: ./backend
-    environment:
-      ENVIRONMENT: local
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/stockpilot
-      JWT_SECRET: ${JWT_SECRET:-local-docker-secret-change-me-0123456789abcdef}
-      CORS_ORIGINS: '["http://localhost:8080","http://localhost:5173"]'
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}  # optional: enables Ask StockPilot
+    environment: *backend-env
+    # Runs migrations, then serves the API with 2 workers (Redis shares live events).
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers"
     ports:
       - "8000:8000"
     depends_on:
@@ -47,6 +65,22 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  worker:
+    build: ./backend
+    environment: *backend-env
+    command: celery -A app.worker worker --loglevel=info --concurrency=4
+    depends_on:
+      backend:
+        condition: service_healthy  # migrations have run
+
+  beat:
+    build: ./backend
+    environment: *backend-env
+    command: celery -A app.worker beat --loglevel=info --schedule /tmp/celerybeat-schedule
+    depends_on:
+      backend:
+        condition: service_healthy
 
   frontend:
     build: ./frontend

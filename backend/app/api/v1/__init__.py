@@ -5,7 +5,9 @@ from app.api.v1 import (
     auth,
     catalog,
     insights,
+    integrations,
     inventory,
+    notifications,
     purchasing,
     realtime,
     reports,
@@ -24,3 +26,5 @@ api_router.include_router(insights.router)
 api_router.include_router(reports.router)
 api_router.include_router(assistant.router)
 api_router.include_router(realtime.router)
+api_router.include_router(notifications.router)
+api_router.include_router(integrations.router)

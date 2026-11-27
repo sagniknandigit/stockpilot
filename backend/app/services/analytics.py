@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import Unprocessable
 from app.models import (
     Category,
-    OrderStatus,
     Product,
     ProductVariant,
     SalesOrder,
@@ -30,9 +29,11 @@ from app.schemas.insights import (
     SlowMover,
 )
 from app.services.forecasting import local_day_bounds, money, org_timezone
+from app.services.metrics import COUNTED_ORDER, NET_COGS, NET_LINE_TOTAL, NET_QUANTITY, NET_REVENUE
 
 MAX_RANGE_DAYS = 366
 ABC_A, ABC_B = 0.80, 0.95  # cumulative revenue share cut-offs
+SLOW_COVER_DAYS = 45  # stock lasting longer than this at the current sales rate is 'slow'
 
 
 def abc_classes(revenues: list[Decimal]) -> list[Literal["A", "B", "C"]]:
@@ -74,25 +75,25 @@ async def analytics(
 
     in_range = (
         SalesOrder.org_id == org_id,
-        SalesOrder.status == OrderStatus.COMPLETED,
+        COUNTED_ORDER,
         SalesOrder.created_at >= lo,
         SalesOrder.created_at < hi,
     )
     day = cast(func.timezone(tz.key, SalesOrder.created_at), Date)
-    line_cogs = SalesOrderLine.unit_cost * SalesOrderLine.quantity
+    line_cogs = NET_COGS
 
     # Revenue (after order discounts) and order counts per day, from the order header.
     revenue_by_day: dict[date, tuple[Decimal, int]] = {
         d: (money(rev), int(n))
         for d, rev, n in await db.execute(
-            select(day, func.sum(SalesOrder.total), func.count()).where(*in_range).group_by(day)
+            select(day, func.sum(NET_REVENUE), func.count()).where(*in_range).group_by(day)
         )
     }
     # Units and cost of goods sold per day, from the lines.
     cogs_by_day: dict[date, tuple[Decimal, int]] = {
         d: (money(cogs), int(units))
         for d, cogs, units in await db.execute(
-            select(day, func.sum(line_cogs), func.sum(SalesOrderLine.quantity))
+            select(day, func.sum(line_cogs), func.sum(NET_QUANTITY))
             .join(SalesOrder, SalesOrder.id == SalesOrderLine.order_id)
             .where(*in_range)
             .group_by(day)
@@ -111,9 +112,9 @@ async def analytics(
     units = sum(u for _, u in cogs_by_day.values())
     previous_revenue = money(
         await db.scalar(
-            select(func.sum(SalesOrder.total)).where(
+            select(func.sum(NET_REVENUE)).where(
                 SalesOrder.org_id == org_id,
-                SalesOrder.status == OrderStatus.COMPLETED,
+                COUNTED_ORDER,
                 SalesOrder.created_at >= prev_lo,
                 SalesOrder.created_at < prev_hi,
             )
@@ -138,14 +139,15 @@ async def analytics(
                 SalesOrderLine.variant_id,
                 func.max(SalesOrderLine.sku),
                 func.max(SalesOrderLine.name),
-                func.sum(SalesOrderLine.quantity),
-                func.sum(SalesOrderLine.line_total),
+                func.sum(NET_QUANTITY),
+                func.sum(NET_LINE_TOTAL),
                 func.sum(line_cogs),
             )
             .join(SalesOrder, SalesOrder.id == SalesOrderLine.order_id)
             .where(*in_range)
             .group_by(SalesOrderLine.variant_id)
-            .order_by(func.sum(SalesOrderLine.line_total).desc())
+            .having(func.sum(NET_QUANTITY) > 0)  # fully refunded lines aren't sales
+            .order_by(func.sum(NET_LINE_TOTAL).desc())
         )
     ).all()
     classes = abc_classes([money(r[4]) for r in perf_rows])
@@ -179,7 +181,7 @@ async def analytics(
         for cls in ("A", "B", "C")
     ]
 
-    # Slow movers: stock is sitting on the shelf, but little or nothing sold this period.
+    # Slow movers: stock that will take a long time to sell, ranked by money tied up.
     stock = (
         select(
             StockLevel.variant_id.label("variant_id"),
@@ -192,7 +194,7 @@ async def analytics(
     sold = (
         select(
             SalesOrderLine.variant_id.label("variant_id"),
-            func.sum(SalesOrderLine.quantity).label("units"),
+            func.sum(NET_QUANTITY).label("units"),
         )
         .join(SalesOrder, SalesOrder.id == SalesOrderLine.order_id)
         .where(*in_range)
@@ -205,7 +207,7 @@ async def analytics(
             func.max(SalesOrder.created_at).label("at"),
         )
         .join(SalesOrder, SalesOrder.id == SalesOrderLine.order_id)
-        .where(SalesOrder.org_id == org_id, SalesOrder.status == OrderStatus.COMPLETED)
+        .where(SalesOrder.org_id == org_id, COUNTED_ORDER)
         .group_by(SalesOrderLine.variant_id)
         .subquery()
     )
@@ -230,9 +232,12 @@ async def analytics(
             ProductVariant.org_id == org_id,
             ProductVariant.is_active.is_(True),
             stock.c.on_hand > 0,
+            # Slow = current stock would take more than SLOW_COVER_DAYS to sell at this
+            # period's rate (on_hand * days > units_sold * threshold), or it isn't selling.
+            stock.c.on_hand * days > units_sold * SLOW_COVER_DAYS,
         )
-        .order_by(units_sold / stock.c.on_hand, stock_value.desc())
-        .limit(8)
+        .order_by(stock_value.desc())
+        .limit(10)
     )
     slow_movers = [
         SlowMover(
@@ -242,6 +247,7 @@ async def analytics(
             on_hand=int(on_hand),
             stock_value=money(value),
             units_sold=int(n),
+            days_of_cover=round(int(on_hand) * days / int(n), 1) if n else None,
             last_sold_at=at,
         )
         for vid, sku, pname, vname, on_hand, value, n, at in slow_rows
@@ -254,8 +260,8 @@ async def analytics(
         for name, rev, qty in await db.execute(
             select(
                 category_name,
-                func.sum(SalesOrderLine.line_total),
-                func.sum(SalesOrderLine.quantity),
+                func.sum(NET_LINE_TOTAL),
+                func.sum(NET_QUANTITY),
             )
             .join(SalesOrder, SalesOrder.id == SalesOrderLine.order_id)
             .join(ProductVariant, ProductVariant.id == SalesOrderLine.variant_id)
@@ -263,7 +269,7 @@ async def analytics(
             .outerjoin(Category, Category.id == Product.category_id)
             .where(*in_range)
             .group_by(category_name)
-            .order_by(func.sum(SalesOrderLine.line_total).desc())
+            .order_by(func.sum(NET_LINE_TOTAL).desc())
         )
     ]
 

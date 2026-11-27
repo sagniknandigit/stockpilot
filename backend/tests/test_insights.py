@@ -140,7 +140,11 @@ async def test_analytics(client: AsyncClient, owner: Tenant) -> None:
     assert totals["avg_order_value"] == "1075.00"
     assert len(body["daily"]) == 30
     assert [(p["sku"], p["abc_class"]) for p in body["products"]] == [("BIG", "A"), ("SMALL", "B")]
-    assert body["slow_movers"][0]["sku"] == "IDLE"
+    # IDLE (no sales) and SMALL/BIG (20 on hand vs a few sold in 30 days) are slow;
+    # ranked by stock value tied up.
+    slow = {m["sku"]: m for m in body["slow_movers"]}
+    assert slow["IDLE"]["days_of_cover"] is None and slow["IDLE"]["units_sold"] == 0
+    assert slow["BIG"]["days_of_cover"] == round(18 * 30 / 2, 1)
     assert body["inventory"]["turnover"] is not None
 
     bad = await client.get(

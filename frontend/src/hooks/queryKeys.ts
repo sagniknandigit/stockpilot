@@ -52,6 +52,17 @@ export const queryKeys = {
       [...queryKeys.purchasing.all, 'orders', params] as const,
     order: (id: UUID) => [...queryKeys.purchasing.all, 'order', id] as const,
   },
+  notifications: {
+    all: ['notifications'] as const,
+  },
+  integrations: {
+    all: ['integrations'] as const,
+    apiKeys: () => [...queryKeys.integrations.all, 'api-keys'] as const,
+    eventTypes: () => [...queryKeys.integrations.all, 'event-types'] as const,
+    webhooks: () => [...queryKeys.integrations.all, 'webhooks'] as const,
+    deliveries: (webhookId: UUID, page: number) =>
+      [...queryKeys.integrations.all, 'deliveries', webhookId, page] as const,
+  },
   insights: {
     all: ['insights'] as const,
     reorder: (onlyNeeded: boolean) => [...queryKeys.insights.all, 'reorder', onlyNeeded] as const,

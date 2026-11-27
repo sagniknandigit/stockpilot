@@ -15,6 +15,15 @@ export type RealtimeEvent =
     }
   | { type: 'order.created'; order_id: UUID; number: number; total: string; location_id: UUID }
   | { type: 'po.received'; po_id: UUID; number: number; status: string }
+  | {
+      type: 'order.refunded'
+      order_id: UUID
+      number: number
+      amount: string
+      refunded_amount: string
+      status: string
+    }
+  | { type: 'notification.created'; title: string; kind: string }
 
 export type RealtimeStatus = 'connecting' | 'live' | 'reconnecting' | 'offline'
 

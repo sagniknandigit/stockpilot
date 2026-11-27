@@ -10,7 +10,7 @@ export type DateTime = string
 export type Money = string
 
 export type Role = 'owner' | 'manager' | 'staff'
-export type OrderStatus = 'completed' | 'refunded'
+export type OrderStatus = 'completed' | 'partially_refunded' | 'refunded'
 export type MovementReason =
   | 'initial'
   | 'adjustment'
@@ -298,6 +298,7 @@ export interface OrderLine {
   quantity: number
   unit_price: Money
   line_total: Money
+  refunded_quantity: number
 }
 
 export interface Order {
@@ -313,7 +314,15 @@ export interface Order {
   created_by: UUID | null
   created_at: DateTime
   refunded_at: DateTime | null
+  /** Total money returned so far (partial refunds accumulate). */
+  refunded_amount: Money
   lines: OrderLine[]
+}
+
+/** Omit `lines` to refund everything not yet refunded. */
+export interface RefundInput {
+  lines?: { line_id: UUID; quantity: number }[]
+  reason?: string | null
 }
 
 export interface OrderListParams extends PageParams {
@@ -529,6 +538,8 @@ export interface Analytics {
     on_hand: number
     stock_value: Money
     units_sold: number
+    /** At this period's sales rate; null = no sales in the period. */
+    days_of_cover: number | null
     last_sold_at: DateTime | null
   }[]
   abc: { abc_class: AbcClass; variants: number; revenue: Money; revenue_share: number }[]
@@ -549,4 +560,100 @@ export interface AssistantAnswer {
   tool_calls: { name: string; input: unknown; is_error: boolean }[]
   model: string
   usage: Record<string, number>
+}
+
+// --- Catalog import ------------------------------------------------------------------------
+
+export interface ImportReport {
+  dry_run: boolean
+  applied: boolean
+  rows: number
+  created: number
+  updated: number
+  categories_created: number
+  errors: { row: number; errors: string[] }[]
+}
+
+// --- Notifications -------------------------------------------------------------------------
+
+export interface AppNotification {
+  id: UUID
+  /** "stock.low" | "digest" (more may be added). */
+  type: string
+  title: string
+  body: string | null
+  /** In-app path to open, e.g. "/inventory?low=1". */
+  link: string | null
+  data: Record<string, unknown>
+  created_at: DateTime
+  read_at: DateTime | null
+}
+
+export interface NotificationList {
+  items: AppNotification[]
+  unread: number
+}
+
+// --- Integrations --------------------------------------------------------------------------
+
+export interface ApiKey {
+  id: UUID
+  name: string
+  prefix: string
+  role: Role
+  created_at: DateTime
+  last_used_at: DateTime | null
+  revoked_at: DateTime | null
+}
+
+export interface ApiKeyCreated extends ApiKey {
+  /** The full secret: shown exactly once. */
+  key: string
+}
+
+export interface ApiKeyInput {
+  name: string
+  role: Exclude<Role, 'owner'>
+}
+
+export type WebhookEventType =
+  'order.created' | 'order.refunded' | 'stock.changed' | 'stock.low' | 'po.received'
+
+export interface Webhook {
+  id: UUID
+  url: string
+  description: string | null
+  events: string[]
+  is_active: boolean
+  /** Signing secret (owners only). */
+  secret: string
+  created_at: DateTime
+}
+
+export interface WebhookInput {
+  url: string
+  description?: string | null
+  events: string[]
+}
+
+export interface WebhookUpdateInput extends Partial<WebhookInput> {
+  is_active?: boolean
+}
+
+export type DeliveryStatus = 'pending' | 'succeeded' | 'failed'
+
+export interface WebhookDelivery {
+  id: UUID
+  endpoint_id: UUID
+  event_type: string
+  payload: Record<string, unknown>
+  status: DeliveryStatus
+  attempts: number
+  response_status: number | null
+  response_body: string | null
+  error: string | null
+  duration_ms: number | null
+  next_attempt_at: DateTime | null
+  delivered_at: DateTime | null
+  created_at: DateTime
 }

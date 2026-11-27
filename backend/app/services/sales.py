@@ -24,7 +24,7 @@ from app.models import (
     SalesOrderLine,
     User,
 )
-from app.schemas.sales import OrderIn
+from app.schemas.sales import OrderIn, RefundIn
 from app.services.inventory import MovementSpec, apply_movements
 from app.services.utils import count
 
@@ -216,35 +216,95 @@ async def list_orders(
     return list(rows), total
 
 
-async def refund_order(db: AsyncSession, user: User, order_id: UUID) -> SalesOrder:
-    # Lock the order so two simultaneous refunds can't both restock.
+async def refund_order(
+    db: AsyncSession, user: User, order_id: UUID, data: RefundIn | None = None
+) -> SalesOrder:
+    """Refund some or all of an order's remaining items, restocking them.
+
+    No body (or no lines) refunds everything not yet refunded. The money returned for a
+    partial refund is the lines' value scaled by the order's discount ratio. The final
+    refund returns exactly what's left, so rounding never drifts over several refunds.
+    """
+    org_id, user_id = user.org_id, user.id
+    # Lock the order row (only it, not the joined location) so concurrent refunds queue.
     order = await db.scalar(
         select(SalesOrder)
-        .where(SalesOrder.id == order_id, SalesOrder.org_id == user.org_id)
-        .with_for_update()
+        .where(SalesOrder.id == order_id, SalesOrder.org_id == org_id)
+        .with_for_update(of=SalesOrder)
         .execution_options(populate_existing=True)
     )
     if order is None:
         raise NotFound("Order not found")
-    if order.status != OrderStatus.COMPLETED:
-        raise Conflict("Order has already been refunded")
+    if order.status == OrderStatus.REFUNDED:
+        raise Conflict("Order has already been fully refunded")
+
+    remaining = {line.id: line.quantity - line.refunded_quantity for line in order.lines}
+    requested: dict[UUID, int] = {}
+    if data is None or not data.lines:
+        requested = {line_id: qty for line_id, qty in remaining.items() if qty > 0}
+    else:
+        problems: list[dict[str, object]] = []
+        for item in data.lines:
+            if item.line_id not in remaining or item.line_id in requested:
+                problems.append({"line_id": str(item.line_id), "error": "unknown or duplicate"})
+            elif item.quantity > remaining[item.line_id]:
+                problems.append(
+                    {
+                        "line_id": str(item.line_id),
+                        "requested": item.quantity,
+                        "refundable": remaining[item.line_id],
+                    }
+                )
+            else:
+                requested[item.line_id] = item.quantity
+        if problems:
+            raise Unprocessable("Cannot refund more than was sold", details=problems)
+    if not requested:
+        raise Conflict("Nothing left to refund on this order")
+
+    lines = {line.id: line for line in order.lines}
+    for line_id, qty in requested.items():
+        lines[line_id].refunded_quantity += qty
+    fully_refunded = all(line.refunded_quantity == line.quantity for line in order.lines)
+    outstanding = order.total - order.refunded_amount
+    if fully_refunded:
+        amount = outstanding
+    else:
+        gross = sum((lines[i].unit_price * q for i, q in requested.items()), Decimal("0"))
+        ratio = order.total / order.subtotal if order.subtotal else Decimal("0")
+        amount = min((gross * ratio).quantize(CENTS), outstanding)
+    order.refunded_amount += amount
+    order.status = OrderStatus.REFUNDED if fully_refunded else OrderStatus.PARTIALLY_REFUNDED
+    order.refunded_at = datetime.now(UTC)
+
     await apply_movements(
         db,
-        org_id=user.org_id,
-        user_id=user.id,
+        org_id=org_id,
+        user_id=user_id,
         specs=[
             MovementSpec(
-                variant_id=line.variant_id,
+                variant_id=lines[line_id].variant_id,
                 location_id=order.location_id,
-                quantity=line.quantity,
+                quantity=qty,
                 reason=MovementReason.RETURN,
                 reference_type="sales_order_refund",
                 reference_id=order.id,
+                note=data.reason if data else None,
             )
-            for line in order.lines
+            for line_id, qty in requested.items()
         ],
     )
-    order.status = OrderStatus.REFUNDED
-    order.refunded_at = datetime.now(UTC)
+    queue_event(
+        db,
+        org_id,
+        {
+            "type": "order.refunded",
+            "order_id": str(order.id),
+            "number": order.number,
+            "amount": str(amount),
+            "refunded_amount": str(order.refunded_amount),
+            "status": order.status.value,
+        },
+    )
     await db.commit()
     return order

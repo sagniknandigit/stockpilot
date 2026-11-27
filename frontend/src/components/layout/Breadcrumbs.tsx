@@ -24,6 +24,8 @@ export function Breadcrumbs() {
     crumbs.push({ label, to: action ? `/purchasing/orders/${id}` : undefined })
     if (action === 'edit') crumbs.push({ label: 'Edit' })
   }
+  if (section === 'settings')
+    crumbs.push({ label: sub === 'webhooks' ? 'Webhook endpoint' : 'Integrations' })
   if (section === 'insights')
     crumbs.push({ label: sub === 'analytics' ? 'Analytics' : 'Reorder planner' })
 

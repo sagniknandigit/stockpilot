@@ -6,8 +6,9 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import Date, and_, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import OrderStatus, Organization, Product, ProductVariant, SalesOrder, StockLevel
+from app.models import Organization, Product, ProductVariant, SalesOrder, StockLevel
 from app.schemas.reports import DailySales, SummaryOut
+from app.services.metrics import COUNTED_ORDER, NET_REVENUE
 
 CENTS = Decimal("0.01")
 
@@ -56,11 +57,11 @@ async def summary(db: AsyncSession, org_id: UUID) -> SummaryOut:
     start = datetime.combine(today - timedelta(days=6), time.min, tzinfo=tz)
     day = cast(func.timezone(tz.key, SalesOrder.created_at), Date)
     rows = await db.execute(
-        select(day, func.count(), func.coalesce(func.sum(SalesOrder.total), 0))
+        select(day, func.count(), func.coalesce(func.sum(NET_REVENUE), 0))
         .where(
             and_(
                 SalesOrder.org_id == org_id,
-                SalesOrder.status == OrderStatus.COMPLETED,
+                COUNTED_ORDER,
                 SalesOrder.created_at >= start,
             )
         )

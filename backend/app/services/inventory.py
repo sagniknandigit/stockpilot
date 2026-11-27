@@ -140,7 +140,53 @@ async def apply_movements(
         for s in specs
     )
     await db.flush()
+    await _detect_low_stock(db, org_id, net)
     return levels
+
+
+async def _detect_low_stock(db: AsyncSession, org_id: UUID, net: dict[StockKey, int]) -> None:
+    """Emit `stock.low` when a variant's total available stock *crosses* its reorder point.
+
+    Runs inside the same transaction (rows are locked), so "before" and "after" are exact,
+    and the event fires once per crossing instead of on every sale below the threshold.
+    """
+    decreases: dict[UUID, int] = defaultdict(int)
+    for (variant_id, _), delta in net.items():
+        decreases[variant_id] += delta
+    candidates = [v for v, d in decreases.items() if d < 0]
+    if not candidates:
+        return
+    rows = await db.execute(
+        select(
+            ProductVariant.id,
+            ProductVariant.sku,
+            ProductVariant.name,
+            Product.name,
+            ProductVariant.reorder_point,
+            func.coalesce(func.sum(StockLevel.on_hand - StockLevel.reserved), 0),
+        )
+        .join(Product, Product.id == ProductVariant.product_id)
+        .outerjoin(StockLevel, StockLevel.variant_id == ProductVariant.id)
+        .where(ProductVariant.id.in_(candidates))
+        .group_by(ProductVariant.id, Product.name)
+    )
+    for variant_id, sku, variant_name, product_name, reorder_point, after in rows:
+        before = int(after) - decreases[variant_id]
+        if before > reorder_point >= int(after):
+            queue_event(
+                db,
+                org_id,
+                {
+                    "type": "stock.low",
+                    "variant_id": str(variant_id),
+                    "sku": sku,
+                    "name": product_name
+                    if variant_name == "Default"
+                    else f"{product_name} - {variant_name}",
+                    "available": int(after),
+                    "reorder_point": reorder_point,
+                },
+            )
 
 
 def _level_out(level: StockLevel) -> StockLevelOut:

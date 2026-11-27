@@ -4,15 +4,17 @@ import type { Order } from '@/api/types'
 import { useCan, useSession } from '@/auth/AuthContext'
 import { Alert } from '@/components/ui/Alert'
 import { Button } from '@/components/ui/Button'
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Dialog } from '@/components/ui/Dialog'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/Table'
-import { toast } from '@/components/ui/toast'
-import { useOrder, useRefundOrder } from '@/hooks/useSales'
+import { useOrder } from '@/hooks/useSales'
 import { getErrorMessage } from '@/lib/errors'
 import { formatDateTime, formatMoney, formatOrderNumber } from '@/lib/format'
+import { fromCents, toCents } from '@/lib/money'
+import { cn } from '@/lib/utils'
+import { InvoiceButton } from './InvoiceButton'
 import { OrderStatusBadge } from './OrderStatusBadge'
+import { RefundDialog } from './RefundDialog'
 
 interface OrderDrawerProps {
   orderId: string | null
@@ -23,8 +25,7 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
   const order = useOrder(orderId ?? undefined)
   const { organization } = useSession()
   const canRefund = useCan('manager')
-  const refund = useRefundOrder()
-  const [confirming, setConfirming] = useState(false)
+  const [refunding, setRefunding] = useState(false)
   const data = order.data
 
   return (
@@ -36,11 +37,15 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
         title={data ? formatOrderNumber(data.number) : 'Order'}
         description={data && formatDateTime(data.created_at, organization.timezone)}
         footer={
-          canRefund &&
-          data?.status === 'completed' && (
-            <Button variant="danger" onClick={() => setConfirming(true)}>
-              <RotateCcw /> Refund order
-            </Button>
+          data && (
+            <>
+              <InvoiceButton orderId={data.id} />
+              {canRefund && data.status !== 'refunded' && (
+                <Button variant="danger" onClick={() => setRefunding(true)}>
+                  <RotateCcw /> Refund…
+                </Button>
+              )}
+            </>
           )
         }
       >
@@ -56,28 +61,7 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
         )}
       </Dialog>
 
-      {data && (
-        <ConfirmDialog
-          open={confirming}
-          onClose={() => setConfirming(false)}
-          title={`Refund ${formatOrderNumber(data.number)}?`}
-          description="All items will be returned to stock at the original location. This can’t be undone."
-          confirmLabel="Refund order"
-          destructive
-          loading={refund.isPending}
-          onConfirm={() =>
-            refund.mutate(data.id, {
-              onSuccess: (order) => {
-                toast.success(
-                  `${formatOrderNumber(order.number)} refunded`,
-                  'Items were returned to stock.',
-                )
-                setConfirming(false)
-              },
-            })
-          }
-        />
-      )}
+      {data && <RefundDialog order={data} open={refunding} onClose={() => setRefunding(false)} />}
     </>
   )
 }
@@ -85,6 +69,7 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
 function OrderDetails({ order }: { order: Order }) {
   const { organization } = useSession()
   const money = (value: string) => formatMoney(value, organization.currency)
+  const refunded = toCents(order.refunded_amount) > 0
 
   return (
     <div className="space-y-5">
@@ -130,7 +115,14 @@ function OrderDetails({ order }: { order: Order }) {
                   <p className="font-medium text-foreground">{line.name}</p>
                   <p className="font-mono text-xs text-muted">{line.sku}</p>
                 </TD>
-                <TD className="text-right tabular-nums">{line.quantity}</TD>
+                <TD className="text-right tabular-nums">
+                  {line.quantity}
+                  {line.refunded_quantity > 0 && (
+                    <p className="text-xs whitespace-nowrap text-warning-ink">
+                      −{line.refunded_quantity} refunded
+                    </p>
+                  )}
+                </TD>
                 <TD className="text-right tabular-nums">{money(line.unit_price)}</TD>
                 <TD className="text-right font-medium tabular-nums">{money(line.line_total)}</TD>
               </TR>
@@ -144,14 +136,38 @@ function OrderDetails({ order }: { order: Order }) {
           <dt>Subtotal</dt>
           <dd>{money(order.subtotal)}</dd>
         </div>
-        <div className="flex justify-between text-muted">
-          <dt>Discount</dt>
-          <dd>−{money(order.discount)}</dd>
-        </div>
-        <div className="flex justify-between border-t pt-1.5 text-base font-semibold text-foreground">
+        {toCents(order.discount) > 0 && (
+          <div className="flex justify-between text-muted">
+            <dt>Discount</dt>
+            <dd>−{money(order.discount)}</dd>
+          </div>
+        )}
+        <div
+          className={cn(
+            'flex justify-between border-t pt-1.5 text-foreground',
+            refunded ? 'font-medium' : 'text-base font-semibold',
+          )}
+        >
           <dt>Total</dt>
           <dd>{money(order.total)}</dd>
         </div>
+        {refunded && (
+          <>
+            <div className="flex justify-between text-warning-ink">
+              <dt>Refunded</dt>
+              <dd>−{money(order.refunded_amount)}</dd>
+            </div>
+            <div className="flex justify-between border-t pt-1.5 text-base font-semibold text-foreground">
+              <dt>Net paid</dt>
+              <dd>
+                {formatMoney(
+                  fromCents(toCents(order.total) - toCents(order.refunded_amount)),
+                  organization.currency,
+                )}
+              </dd>
+            </div>
+          </>
+        )}
       </dl>
     </div>
   )

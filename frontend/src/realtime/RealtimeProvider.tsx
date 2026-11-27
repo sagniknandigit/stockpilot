@@ -97,6 +97,18 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             }
           }, 1500)
           break
+        case 'order.refunded':
+          invalidate(
+            queryKeys.sales.all,
+            queryKeys.reports.all,
+            queryKeys.inventory.all,
+            queryKeys.insights.all,
+          )
+          break
+        case 'notification.created':
+          invalidate(queryKeys.notifications.all)
+          toast.info(event.title)
+          break
         case 'po.received':
           invalidate(
             queryKeys.purchasing.all,

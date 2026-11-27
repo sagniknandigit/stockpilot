@@ -1,6 +1,7 @@
-import { api } from './client'
+import { api, apiDownload } from './client'
 import type {
   Category,
+  ImportReport,
   Page,
   Product,
   ProductInput,
@@ -27,6 +28,15 @@ export const catalogApi = {
     api.post<Variant>(`/catalog/products/${productId}/variants`, input),
   updateVariant: (id: UUID, input: VariantUpdateInput) =>
     api.patch<Variant>(`/catalog/variants/${id}`, input),
+
+  /** All SKUs as CSV (importer columns + current on-hand). */
+  exportProducts: () => apiDownload('/catalog/products/export.csv'),
+  /** Create/update products by SKU. All-or-nothing; `dryRun` validates without saving. */
+  importProducts: (file: File, dryRun: boolean) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post<ImportReport>('/catalog/products/import', form, { query: { dry_run: dryRun } })
+  },
 
   /** POS lookup. Exact barcode/SKU matches are returned first. */
   searchVariants: (locationId: UUID, q: string, signal?: AbortSignal) =>

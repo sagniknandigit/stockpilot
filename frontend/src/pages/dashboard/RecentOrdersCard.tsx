@@ -71,7 +71,7 @@ export function RecentOrdersCard() {
                       <span className="text-[13px] font-semibold text-foreground">
                         {formatMoney(order.total, organization.currency)}
                       </span>
-                      {order.status === 'refunded' && <OrderStatusBadge status={order.status} />}
+                      {order.status !== 'completed' && <OrderStatusBadge status={order.status} />}
                     </span>
                   </Link>
                 </li>

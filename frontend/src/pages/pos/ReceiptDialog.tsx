@@ -1,4 +1,5 @@
 import { CircleCheck, Printer, Plus } from 'lucide-react'
+import { InvoiceButton } from '@/pages/orders/InvoiceButton'
 import { SuccessCheck } from './SuccessCheck'
 import type { Location, Order } from '@/api/types'
 import { Button } from '@/components/ui/Button'
@@ -34,6 +35,7 @@ export function ReceiptDialog({
       size="sm"
       footer={
         <>
+          {order && <InvoiceButton orderId={order.id} variant="ghost" />}
           <Button variant="secondary" onClick={() => window.print()}>
             <Printer /> Print
           </Button>

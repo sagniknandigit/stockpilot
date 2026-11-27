@@ -1,8 +1,13 @@
+import { twMerge } from 'tailwind-merge'
+
 type ClassValue = string | false | null | undefined
 
-/** Join class names, skipping falsy values. */
+/**
+ * Join class names, skipping falsy values. Conflicting Tailwind utilities are merged so the
+ * last one wins (e.g. a `size-8` override beats a component's default `size-9`).
+ */
 export function cn(...classes: ClassValue[]): string {
-  return classes.filter(Boolean).join(' ')
+  return twMerge(classes.filter(Boolean).join(' '))
 }
 
 /** Short, human-friendly prefix of a UUID (e.g. for references in tables). */

@@ -99,6 +99,7 @@ class SlowMover(BaseModel):
     on_hand: int
     stock_value: Decimal
     units_sold: int
+    days_of_cover: float | None  # at this period's sales rate; None = no sales
     last_sold_at: datetime | None
 
 

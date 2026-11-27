@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { salesApi } from '@/api/sales'
-import type { OrderInput, OrderListParams, UUID } from '@/api/types'
+import type { OrderInput, OrderListParams, RefundInput, UUID } from '@/api/types'
 import { rememberLocalOrder } from '@/realtime/events'
 import { queryKeys } from './queryKeys'
 
@@ -51,7 +51,10 @@ export function useRefundOrder() {
   const queryClient = useQueryClient()
   const invalidate = useInvalidateAfterSale()
   return useMutation({
-    mutationFn: salesApi.refundOrder,
+    mutationFn: ({ id, input }: { id: UUID; input?: RefundInput }) =>
+      salesApi.refundOrder(id, input),
+    // The refund dialog shows validation problems (e.g. quantity > refundable) inline.
+    meta: { silentError: true },
     onSuccess: (order) => {
       queryClient.setQueryData(queryKeys.sales.order(order.id), order)
       return invalidate()
