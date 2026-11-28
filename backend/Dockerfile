@@ -17,5 +17,6 @@ USER appuser
 
 EXPOSE 8000
 
-# Apply migrations, then serve.
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"]
+# Migrations, then the API (and, with RUN_WORKER_IN_PROCESS=true, the Celery worker).
+# Listens on $PORT when the platform provides one (Render, Railway, ...), else 8000.
+CMD ["sh", "start.sh"]

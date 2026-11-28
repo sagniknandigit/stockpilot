@@ -34,6 +34,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
+        allow_origin_regex=settings.cors_origin_regex,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -42,6 +43,11 @@ def create_app() -> FastAPI:
     observability.install(app)
     register_exception_handlers(app)
     app.include_router(api_router)
+
+    @app.get("/health/live", tags=["ops"])
+    async def liveness() -> dict[str, str]:
+        """Process is up. Touches no database, so uptime pings don't wake serverless Postgres."""
+        return {"status": "ok"}
 
     @app.get("/health", tags=["ops"])
     async def health(db: DbSession) -> dict[str, str]:

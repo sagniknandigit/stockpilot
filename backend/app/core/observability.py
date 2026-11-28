@@ -1,5 +1,6 @@
 """Request IDs, structured logs and Prometheus metrics."""
 
+import hmac
 import json
 import logging
 import time
@@ -109,6 +110,12 @@ def install(app: FastAPI) -> None:
             request_id_var.reset(token)
 
     @app.get("/metrics", include_in_schema=False)
-    async def metrics() -> Response:
-        # Expose only on the internal network in production (e.g. via the reverse proxy).
+    async def metrics(request: Request) -> Response:
+        token = settings.metrics_token
+        if token:
+            supplied = request.headers.get("authorization", "")
+            if not hmac.compare_digest(supplied, f"Bearer {token}"):
+                return Response(status_code=401)
+        elif settings.environment == "production":
+            return Response(status_code=404)  # never public by accident
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

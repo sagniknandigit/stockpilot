@@ -1,9 +1,11 @@
 from functools import lru_cache
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DEV_SECRET = "dev-only-secret-change-me-in-production-0123456789"
+_LIBPQ_ONLY_PARAMS = {"channel_binding", "gssencmode", "target_session_attrs", "options"}
 
 
 class Settings(BaseSettings):
@@ -20,6 +22,9 @@ class Settings(BaseSettings):
     bcrypt_rounds: int = 12
 
     cors_origins: list[str] = ["http://localhost:5173"]
+    # Optional regex for extra origins, e.g. Vercel preview deploys:
+    #   ^https://stockpilot-[a-z0-9-]+\.vercel\.app$
+    cors_origin_regex: str | None = None
 
     # Ask StockPilot (natural-language questions via Gemini). Disabled when no key is set.
     gemini_api_key: str | None = None
@@ -43,15 +48,41 @@ class Settings(BaseSettings):
     webhooks_allow_insecure_urls: bool = False
 
     log_json: bool = False
+    # When set, /metrics requires "Authorization: Bearer <token>". In production without
+    # a token, /metrics is disabled (it would otherwise be public on hosts with no proxy).
+    metrics_token: str | None = None
+
+    # Background schedule. The API triggers outbox processing right after each commit, so
+    # these sweeps are only a safety net; raise them on serverless Postgres (e.g. Neon) so
+    # the database can scale to zero between sweeps.
+    outbox_sweep_seconds: float = 5.0
+    webhook_retry_sweep_seconds: float = 30.0
+    # Public demo deployments: rebuild the demo shop every night (03:00 IST).
+    demo_reset_daily: bool = False
 
     @field_validator("database_url")
     @classmethod
     def _async_driver(cls, url: str) -> str:
-        """Accept the postgres:// URLs that hosting platforms provide."""
+        """Accept the URLs that hosting platforms provide (Neon, Render, Railway, ...).
+
+        - `postgres://` / `postgresql://` → `postgresql+asyncpg://`
+        - libpq's `sslmode=require` → asyncpg's `ssl=require`
+        - libpq-only options asyncpg doesn't understand (e.g. `channel_binding`) are dropped
+        """
         for prefix in ("postgres://", "postgresql://"):
             if url.startswith(prefix):
-                return "postgresql+asyncpg://" + url.removeprefix(prefix)
-        return url
+                url = "postgresql+asyncpg://" + url.removeprefix(prefix)
+                break
+        parts = urlsplit(url)
+        if not parts.query:
+            return url
+        query = []
+        for key, value in parse_qsl(parts.query, keep_blank_values=True):
+            if key == "sslmode":
+                query.append(("ssl", value))
+            elif key not in _LIBPQ_ONLY_PARAMS:
+                query.append((key, value))
+        return urlunsplit(parts._replace(query=urlencode(query)))
 
     @property
     def is_test(self) -> bool:

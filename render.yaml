@@ -1,93 +1,62 @@
-# Render Blueprint: one-click deploy of the whole stack.
-#   Dashboard → New → Blueprint → select this repo. Then set GEMINI_API_KEY (optional)
-#   and SMTP_* (optional) on the "stockpilot-shared" environment group.
+# Render Blueprint: StockPilot backend on Render's FREE tier.
+#   Dashboard → New → Blueprint → pick this repo. See DEPLOY.md for the full walkthrough.
 #
-# Topology: web (nginx + SPA) → api (FastAPI) → Postgres; worker + beat (Celery) ↔ Redis.
+#   Vercel (frontend) ──► stockpilot-api (FastAPI + Celery worker/beat, one container)
+#                              ├──► Neon Postgres (external, free)
+#                              └──► stockpilot-redis (Render Key Value, free)
+#
+# Free web services sleep after 15 min idle; DEPLOY.md sets up a free uptime ping.
+# On a paid plan, move the worker into its own `type: worker` service and drop
+# RUN_WORKER_IN_PROCESS.
 
-envVarGroups:
-  - name: stockpilot-shared
+services:
+  - type: keyvalue
+    name: stockpilot-redis
+    plan: free
+    region: singapore
+    ipAllowList: []            # reachable only from services in this account
+    maxmemoryPolicy: noeviction  # never silently drop queued Celery tasks
+
+  - type: web
+    name: stockpilot-api
+    runtime: docker
+    plan: free
+    region: singapore          # keep it next to the Neon database (AWS ap-southeast-1)
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health/live
+    autoDeployTrigger: commit
+    buildFilter:
+      paths: ["backend/**"]      # relative to the repo root; frontend changes go to Vercel
     envVars:
       - key: ENVIRONMENT
         value: production
       - key: LOG_JSON
         value: "true"
+      - key: RUN_WORKER_IN_PROCESS
+        value: "true"
+      # Neon scales to zero when idle; sweep rarely so it can (events are still processed
+      # immediately after each sale; these sweeps are only a safety net).
+      - key: OUTBOX_SWEEP_SECONDS
+        value: "1800"
+      - key: WEBHOOK_RETRY_SWEEP_SECONDS
+        value: "1800"
+      - key: DEMO_RESET_DAILY
+        value: "true"
       - key: JWT_SECRET
         generateValue: true
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_USERNAME
-        sync: false
-      - key: SMTP_PASSWORD
-        sync: false
-
-databases:
-  - name: stockpilot-db
-    databaseName: stockpilot
-    plan: basic-256mb
-
-services:
-  - type: keyvalue
-    name: stockpilot-redis
-    plan: starter
-    ipAllowList: []  # private network only
-
-  - type: web
-    name: stockpilot-api
-    runtime: docker
-    dockerContext: ./backend
-    dockerfilePath: ./backend/Dockerfile
-    healthCheckPath: /health
-    plan: starter
-    envVars:
-      - fromGroup: stockpilot-shared
-      - key: DATABASE_URL
-        fromDatabase: { name: stockpilot-db, property: connectionString }
       - key: REDIS_URL
         fromService: { type: keyvalue, name: stockpilot-redis, property: connectionString }
-      - key: CORS_ORIGINS
-        value: '["https://stockpilot-web.onrender.com"]'
-      - key: APP_URL
-        value: https://stockpilot-web.onrender.com
-
-  - type: worker
-    name: stockpilot-worker
-    runtime: docker
-    dockerContext: ./backend
-    dockerfilePath: ./backend/Dockerfile
-    dockerCommand: celery -A app.worker worker --loglevel=info --concurrency=2
-    plan: starter
-    envVars:
-      - fromGroup: stockpilot-shared
-      - key: DATABASE_URL
-        fromDatabase: { name: stockpilot-db, property: connectionString }
-      - key: REDIS_URL
-        fromService: { type: keyvalue, name: stockpilot-redis, property: connectionString }
-      - key: APP_URL
-        value: https://stockpilot-web.onrender.com
-
-  - type: worker
-    name: stockpilot-beat
-    runtime: docker
-    dockerContext: ./backend
-    dockerfilePath: ./backend/Dockerfile
-    dockerCommand: celery -A app.worker beat --loglevel=info --schedule /tmp/celerybeat-schedule
-    plan: starter
-    envVars:
-      - fromGroup: stockpilot-shared
-      - key: DATABASE_URL
-        fromDatabase: { name: stockpilot-db, property: connectionString }
-      - key: REDIS_URL
-        fromService: { type: keyvalue, name: stockpilot-redis, property: connectionString }
-
-  - type: web
-    name: stockpilot-web
-    runtime: docker
-    dockerContext: ./frontend
-    dockerfilePath: ./frontend/Dockerfile
-    plan: starter
-    envVars:
-      # nginx proxies /api (incl. the WebSocket) to the API over Render's private network.
-      - key: API_HOSTPORT
-        fromService: { type: web, name: stockpilot-api, property: hostport }
+      # Values you paste in when creating the Blueprint (see DEPLOY.md):
+      - key: DATABASE_URL        # Neon *direct* connection string (not the -pooler one)
+        sync: false
+      - key: CORS_ORIGINS        # e.g. ["https://stockpilot.vercel.app"]
+        sync: false
+      - key: CORS_ORIGIN_REGEX   # e.g. ^https://stockpilot-[a-z0-9-]+\.vercel\.app$
+        sync: false
+      - key: APP_URL             # e.g. https://stockpilot.vercel.app (links in emails)
+        sync: false
+      - key: GEMINI_API_KEY      # optional: Ask StockPilot
+        sync: false
+      - key: METRICS_TOKEN       # optional: protects /metrics
+        sync: false

@@ -102,3 +102,11 @@ def send_daily_digests() -> int:
         return sent
 
     return run(job)
+
+
+@celery_app.task(name="stockpilot.reset_demo")
+def reset_demo() -> None:
+    """Rebuild the public demo tenant (only scheduled when DEMO_RESET_DAILY=true)."""
+    from app.scripts.seed import seed
+
+    run(lambda: seed(reset=True))

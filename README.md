@@ -140,7 +140,6 @@ The throughput ceiling is about 125 checkouts/s *per shop*, because checkouts wi
 
 ### Roadmap
 
-- [ ] Deploy the Render blueprint publicly (needs an account)
 - [ ] Per-location order sequences, to lift the single-tenant checkout ceiling
 - [ ] Barcode label printing; supplier email for purchase orders
 
@@ -212,9 +211,14 @@ docker compose exec backend python -m app.scripts.seed
 
 This starts Postgres, Redis, the API (2 workers), a Celery worker, Celery beat, Mailpit and nginx serving the SPA.
 
-### Deploying
+### Deploying (free)
 
-`render.yaml` is a Render Blueprint for the whole stack: managed Postgres, Redis, the API, the worker, beat, and the web front end (nginx proxies `/api` to the API over the private network). Create it under New → Blueprint, then optionally set `GEMINI_API_KEY` and `SMTP_*` on the `stockpilot-shared` environment group. `DATABASE_URL` in the `postgres://` form that hosting platforms provide is accepted as-is.
+**Live demo:** _add your Vercel URL here after deploying_
+
+The whole stack deploys for **$0, with no credit card**: Vercel (frontend), Render's free
+web service (API + Celery in one container), Neon (Postgres) and Render Key Value (Redis).
+[`DEPLOY.md`](DEPLOY.md) is a step-by-step guide (about 30 minutes), and `render.yaml` is
+the Render Blueprint.
 
 ### Tests and checks
 

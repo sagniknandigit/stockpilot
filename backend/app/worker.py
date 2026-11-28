@@ -25,8 +25,14 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
     beat_schedule={
         # Safety net: the API also kicks this right after each commit that adds events.
-        "process-outbox": {"task": "stockpilot.process_outbox", "schedule": 5.0},
-        "retry-due-webhooks": {"task": "stockpilot.retry_due_webhooks", "schedule": 30.0},
+        "process-outbox": {
+            "task": "stockpilot.process_outbox",
+            "schedule": settings.outbox_sweep_seconds,
+        },
+        "retry-due-webhooks": {
+            "task": "stockpilot.retry_due_webhooks",
+            "schedule": settings.webhook_retry_sweep_seconds,
+        },
         # 02:30 UTC = 08:00 IST, before most shops open.
         "daily-digest": {
             "task": "stockpilot.send_daily_digests",
@@ -34,3 +40,10 @@ celery_app.conf.update(
         },
     },
 )
+
+if settings.demo_reset_daily:
+    # 21:30 UTC = 03:00 IST: keep the public demo shop tidy, whatever visitors did to it.
+    celery_app.conf.beat_schedule["reset-demo"] = {
+        "task": "stockpilot.reset_demo",
+        "schedule": crontab(hour=21, minute=30),
+    }
