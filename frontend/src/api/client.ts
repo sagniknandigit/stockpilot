@@ -1,7 +1,9 @@
 import { tokenStore } from './tokenStore'
 import type { TokenPair } from './types'
 
-export const API_BASE_URL = (import.meta.env.VITE_API_URL ?? '/api/v1').replace(/\/$/, '')
+// `||`, not `??`: Docker builds pass an empty VITE_API_URL when none is given, and an
+// empty string must still fall back to the same-origin API.
+export const API_BASE_URL = (import.meta.env.VITE_API_URL || '/api/v1').replace(/\/$/, '')
 const BASE_URL = API_BASE_URL
 
 /** An error returned by the API ({"error": {code, message, details}}) or a network failure. */

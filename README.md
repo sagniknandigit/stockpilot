@@ -194,6 +194,13 @@ App: http://localhost:5173. The dev server proxies `/api`, including the WebSock
 
 ### With Docker
 
+Docker Compose reads secrets from a `.env` file in the **project root** (not `backend/.env`).
+To enable Ask StockPilot:
+
+```bash
+echo "GEMINI_API_KEY=your-key" > .env     # git-ignored
+```
+
 ```bash
 docker compose up --build
 docker compose exec backend python -m app.scripts.seed
